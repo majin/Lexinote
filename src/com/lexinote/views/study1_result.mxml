@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Panel xmlns:mx="http://www.adobe.com/2006/mxml"
+	xmlns:utilities="com.lexinote.utilities.*"
+	width="100%" height="100%" horizontalAlign="center" layout="absolute">
+	<mx:Script>
+		<![CDATA[
+			[Bindable]
+			private var _corrects:Array;
+			
+			public function init(corrects:Array):void {
+				_corrects = corrects;
+				if(_corrects.length > 0) {
+					message.text = "以下の"+_corrects.length+"ｱｲﾃﾑの親密度がアップしました。"
+				}else {
+					message.text = "もう一度チャレンジしましょう！"
+				}
+				btnNoNext.setFocus();
+			}
+
+		]]>
+	</mx:Script>
+	<mx:Label id="message" text="" fontSize="23" horizontalCenter="0" y="39" color="#682406"/>
+
+	<utilities:EnterButton id="btnNoNext" y="400" label="閉じる" width="124" height="47" fontSize="18" color="#020202"  click="this.parentDocument.visible=false" buttonMode="true" horizontalCenter="0"/>
+	<mx:DataGrid y="108" width="540" height="243" dataProvider="{_corrects}" horizontalCenter="0">
+		<mx:columns>
+			<mx:DataGridColumn headerText="No." dataField="id" width="55" textAlign="right" editable="false">
+				<mx:headerRenderer>
+					<mx:Component>
+						<mx:Label textAlign="center"/>
+					</mx:Component>
+				</mx:headerRenderer>
+			</mx:DataGridColumn>
+			
+			<mx:DataGridColumn headerText="ｱｲﾃﾑ" dataField="spelling" width="120" textAlign="left" editable="false">
+				<mx:headerRenderer>
+					<mx:Component>
+						<mx:Label textAlign="center"/>
+					</mx:Component>
+				</mx:headerRenderer>
+			</mx:DataGridColumn>
+
+			<mx:DataGridColumn headerText="Lv." dataField="level"  width="50" textAlign="center" editable="false">
+				<mx:headerRenderer>
+					<mx:Component>
+						<mx:Label textAlign="center" />
+					</mx:Component>
+				</mx:headerRenderer>
+			</mx:DataGridColumn>
+			<mx:DataGridColumn headerText="意味" dataField="xmeaning" showDataTips="true" editable="false">
+				<mx:headerRenderer>
+					<mx:Component>
+						<mx:Label textAlign="center" />
+					</mx:Component>
+				</mx:headerRenderer>
+				<mx:itemRenderer>
+					<mx:Component>
+						<mx:TextInput editable="false" borderStyle="none" backgroundAlpha="0"  buttonMode="true" toolTip="{this.text}"/>
+					</mx:Component>
+				</mx:itemRenderer>
+			</mx:DataGridColumn>
+		</mx:columns>
+	</mx:DataGrid>
+</mx:Panel>

@@ -1,0 +1,401 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml"
+	xmlns:Rating="com.Rating.*"
+	xmlns:views="com.lexinote.views.*"
+	 creationComplete="init()" hide="loadCancel()" verticalScrollPolicy="off" horizontalScrollPolicy="off" >
+	<mx:Image x="{this.width-30}" y="4" source="@Embed('assets/close.png')" click="this.parent.visible=false" toolTip="閉じる" buttonMode="true"/>
+
+	<mx:Script>
+		<![CDATA[
+			import mx.core.Application;
+			import mx.controls.HTML;
+			import mx.managers.CursorManager;
+			import com.Rating.Ratings;
+			import com.lexinote.models.Word;
+			import com.lexinote.models.WordDetail;
+			import mx.formatters.DateFormatter;
+			
+			public var _creationComplete:Boolean = false;
+			private var _browser:HTML;
+			private var _title:String;
+			
+			private var _wordModel:Word;
+			[Bindable]
+			private var _words:Array;
+
+			[Bindable]
+			private var _searchText:String = "";
+
+            [Embed(source="assets/stock_text_color_hilight.png")]
+ 			[Bindable]
+            public var chkIcon:Class;            
+            [Bindable]
+            public var _rtenabled:Boolean = false;           
+
+			private function init():void {
+				_wordModel = new Word();
+
+				_creationComplete = true;
+				_browser = null;
+				_title =  "smart.fm";
+				pfinit();
+				
+				this.addEventListener(KeyboardEvent.KEY_DOWN, function (event:KeyboardEvent):void
+				{
+					if (event.keyCode == Keyboard.CONTROL) {
+						_rtenabled = true;
+					}
+				});
+				this.addEventListener(KeyboardEvent.KEY_UP, function (event:KeyboardEvent):void
+				{
+					if (event.keyCode == Keyboard.CONTROL) {
+						_rtenabled = false;
+					}
+				});
+			}
+			
+			private function pfinit():void {
+				var result:SQLResult;
+				var sqlHeader:String = "select id, toeic_id, Words.order_number as order_number, Words.created as created, spelling, level, istraining, familiarity, meaning," + 
+						"case when meaning is NULL or meaning='' then standard_meaning else meaning end as xmeaning," +
+						"photo_uri, wordclass, example, definition, relatedword, yourproduction ";
+				sqlHeader += "from Words left join WordDetails on Words.id=WordDetails.word_id ";	
+				result = _wordModel.query(sqlHeader + "where familiarity>0 order by istraining desc, familiarity asc, level asc, spelling asc");
+
+				_words = result.data;
+				
+				for(var i:Number=0; i<_words.length; i++) {
+					if(_words[i].spelling == _searchText) {
+						dgList.selectedIndex = i;
+						dgList.validateNow();
+						dgList.scrollToIndex(i);
+						break;
+					}
+				}
+
+			}
+			public function setText(txt:String):void {
+				Application.application.outputLog(0, "", "browser", "dictionary", _title, _searchText);
+				changeText(txt, true);
+				
+				pfinit();
+			}
+ 			private function changeText(txt:String, pub:Boolean):void {
+				if(_searchText != txt) {
+					_searchText = txt;
+				}else {
+//					reload();
+				}
+				if(!pub) {
+					Application.application.outputLog(0, "", "browser", "dictionary2", _title, _searchText);
+				}				
+			}
+            private function html_load(evt:Event):void {		
+				CursorManager.setBusyCursor();
+            }
+            private function html_complete(evt:Event):void {
+ 				CursorManager.removeAllCursors();
+            }
+
+			private function selectView():void {
+				switch(viewstack1.selectedChild.id) {
+//					case "c0": _browser = null; _title="smart.fm"; break;
+					case "c0": _browser = browser0; _title=(_browser.parent as Canvas).label; break;
+					case "c1": _browser = browser1; _title=(_browser.parent as Canvas).label; break;
+					case "c2": _browser = browser2; _title=(_browser.parent as Canvas).label;break;
+					case "c3": _browser = browser3; _title=(_browser.parent as Canvas).label;break;
+					case "c4": _browser = browser4; _title=(_browser.parent as Canvas).label;break;
+				}
+				Application.application.outputLog(0, "", "browser", "dictionary", _title, "タブ切替");
+			}
+			private function browserOpen():void {
+			}
+			private function loadCancel():void {
+				if(_browser != null) {
+					_browser.cancelLoad();
+				}
+ 				CursorManager.removeAllCursors();
+			}
+			
+			private function reload():void {
+				if(_browser != null) {
+					_browser.reload();
+				}
+ 				CursorManager.setBusyCursor();
+			}
+			
+			private function historyGo(idx:Number):void {
+				if(_browser != null) {
+					_browser.historyGo(idx);
+				}else {
+					//browser0の履歴を遷移したい
+				}
+			}
+
+			private function listClick():void {
+				if(isNaN(this.dgList.selectedIndex) || this.dgList.selectedItem == null) {
+					return;
+				}
+				this.changeText(this.dgList.selectedItem.spelling, false);
+				this.parentApplication.selectWord(dgList.selectedItem.spelling);
+				dgList.setFocus();
+			}
+
+			public function listKeydown(e:KeyboardEvent):void {
+				listClick();
+			}
+			private function sortTraining(obj1:Object, obj2:Object):int{
+				if(obj1.familiarity == 5 &&  obj2.familiarity < 5){
+					return istrainingColumn.sortDescending?-1:1;
+				}else if(obj1.familiarity < 5 && obj2.familiarity == 5){
+					return istrainingColumn.sortDescending?1:-1;
+				}
+				if(obj1.istraining > obj2.istraining){
+					return 1;
+				}else if(obj1.istraining < obj2.istraining){
+					return -1;
+				}
+				if(obj1.familiarity > obj2.familiarity){
+					return istrainingColumn.sortDescending?-1:1;
+				}else if(obj1.familiarity < obj2.familiarity){
+					return istrainingColumn.sortDescending?1:-1;
+				}
+				return 0;
+			}
+			public function changeTraining(data:Object):void {
+				data.istraining = !data.istraining;
+				Application.application.serverUpdateWord(data);
+				Application.application.outputLog(data.id, data.spelling, "flag", "練習", data.istraining?1:0, "");
+
+				_wordModel.update({id:data.id}, {
+					istraining: data.istraining?1:0
+				});
+			}
+			private function changeDate(item:Object,columnName:String=""):String {
+				if(item.created > 0) {
+					var date_fmt:DateFormatter = new DateFormatter();
+					date_fmt.formatString = "'YY/MM/DD HH:NN";
+					return date_fmt.format(new Date(item.created));;
+//					return (new Date(item.created)).toString();
+				}
+				return "";
+			}
+			private function sortFamiliarity(obj1:Object, obj2:Object):int{
+/*
+				if(obj1.familiarity == 0 && obj2.familiarity == 0) {
+					return 0;
+				}else
+				if(obj1.familiarity == 0) {
+					return dgcFamiliarity.sortDescending?-1:1;
+				}else
+				if(obj2.familiarity == 0) {
+					return dgcFamiliarity.sortDescending?1:-1;
+				}
+
+				if(obj1.familiarity > obj2.familiarity){
+					return 1;
+				}else if(obj1.familiarity < obj2.familiarity){
+					return -1;
+				}
+*/
+
+				var a1:Number = obj1.familiarity;
+				var a2:Number = obj2.familiarity;
+				if(!dgcFamiliarity.sortDescending) {
+					a1 = (obj1.familiarity+5)%6;
+					a2 = (obj2.familiarity+5)%6;
+				}
+				if(a1 > a2){
+					return 1;
+				}else if(a1 < a2){
+					return -1;
+				}
+
+				return 0;
+			}
+			private function sortOrder(obj1:Object, obj2:Object):int{
+				var a1:Number = obj1.order_number;
+				var a2:Number = obj2.order_number;
+				if(!order.sortDescending) {
+					a1 = a1==0?1000000:a1;
+					a2 = a2==0?1000000:a2;
+				}
+				if(a1 > a2){
+					return 1;
+				}else if(a1 < a2){
+					return -1;
+				}
+
+				return 0;
+			}
+			public function click_rating(data:Object, e:Event):void {
+//data.spelling+" "+data.familiarity+"->"+((e.currentTarget) as Ratings).value);
+				var newValue:Number = ((e.currentTarget) as Ratings).value;
+				if(data.familiarity == newValue) {
+					return;
+				}
+
+				_wordModel.update({id:data.id}, {
+					familiarity: newValue
+				});
+				Application.application.outputLog(data.id, data.spelling, "browser", "key", "familiarity", data.familiarity+"->"+newValue);
+			}
+		]]>
+	</mx:Script>
+
+<mx:VDividedBox x="10" y="23" width="{this.width-25}" height="{this.height-40}" horizontalScrollPolicy="off">
+	<mx:VBox horizontalScrollPolicy="off" verticalScrollPolicy="off" height="200" width="{this.width-28}" >
+		<mx:DataGrid id="dgList" width="100%" height="100%" dataProvider="{_words}" itemClick="listClick()"  keyDown="listKeydown(event)">
+			<mx:columns>
+				<mx:DataGridColumn id="istrainingColumn" headerText="練習" dataField="istraining" width="58" textAlign="center" paddingLeft="0" paddingRight="3"
+				    editable="false" sortCompareFunction="sortTraining">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center"/>
+						</mx:Component>
+					</mx:headerRenderer>
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:CheckBox click="outerDocument.changeTraining(data)"
+								 selected="{data.familiarity==5?false:data.istraining}"
+								 enabled="{data.familiarity==5?false:true}"
+								upIcon="@Embed('assets/flag_gray.png')"
+								overIcon="@Embed('assets/flag_gray.png')"
+								downIcon="@Embed('assets/flag_gray.png')"
+					 			selectedUpIcon="@Embed('assets/flag_orange.png')"
+								selectedOverIcon="@Embed('assets/flag_orange.png')"
+								selectedDownIcon="@Embed('assets/flag_orange.png')"
+								disabledIcon="@Embed('assets/award_star_gold_3.png')"
+							  />
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>
+						
+				<mx:DataGridColumn id="order" headerText="課題" dataField="order_number" width="58"
+					 textAlign="center" editable="false" paddingLeft="0" paddingRight="3" sortCompareFunction="sortOrder">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center"/>
+						</mx:Component>
+					</mx:headerRenderer>
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center" text="{this.data.order_number>0?(this.data.order_number<1000?'A':'B')+String(this.data.order_number+1000).substring(1):''}"/>
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>
+
+				<mx:DataGridColumn id="No" headerText="No." dataField="id" width="42" textAlign="right" editable="false" paddingLeft="0" paddingRight="3">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center"/>
+						</mx:Component>
+					</mx:headerRenderer>
+				</mx:DataGridColumn>
+				
+				<mx:DataGridColumn headerText="ｱｲﾃﾑ" dataField="spelling" width="90" textAlign="left" editable="false">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center"/>
+						</mx:Component>
+					</mx:headerRenderer>
+				</mx:DataGridColumn>
+
+				<mx:DataGridColumn headerText="Lv." dataField="level"  width="28" textAlign="center" editable="false" paddingLeft="0" paddingRight="0">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center" />
+						</mx:Component>
+					</mx:headerRenderer>
+				</mx:DataGridColumn>
+
+				<mx:DataGridColumn id="dgcFamiliarity" headerText="親密度" dataField="familiarity" rendererIsEditor="false"
+					 editable="false" width="80" textAlign="center" sortCompareFunction="sortFamiliarity">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center" />
+						</mx:Component>
+					</mx:headerRenderer>
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:HBox mouseChildren="{outerDocument._rtenabled}" backgroundAlpha="0.5" backgroundColor="{(this.data.familiarity>4)?0xccffcc:0xffffff}" horizontalScrollPolicy="off">
+								<Rating:Ratings value="{this.data.familiarity}"  click="outerDocument.click_rating(this.data, event)"/>
+							</mx:HBox>
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>
+
+				<mx:DataGridColumn headerText="意味" dataField="xmeaning" showDataTips="true" editable="false" width="160">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center" />
+						</mx:Component>
+					</mx:headerRenderer>
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:TextInput color="{(!this.data.meaning || this.data.meaning=='')?0x999999:0x000000}" editable="false" borderStyle="none" backgroundAlpha="0"  buttonMode="true" toolTip="{this.text}"/>
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>
+
+				<mx:DataGridColumn headerText="例文" dataField="example" showDataTips="true" editable="false" width="200">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center" />
+						</mx:Component>
+					</mx:headerRenderer>
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:TextInput editable="false" borderStyle="none"  backgroundAlpha="0" buttonMode="true" toolTip="{this.text}" />
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>
+				
+				<mx:DataGridColumn headerText="自己表現" dataField="yourproduction" showDataTips="true" editable="false">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center" />
+						</mx:Component>
+					</mx:headerRenderer>
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:TextInput editable="false" borderStyle="none"  backgroundAlpha="0" buttonMode="true" toolTip="{this.text}" />
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>
+			</mx:columns>
+		</mx:DataGrid>
+	</mx:VBox>
+	<mx:VBox horizontalScrollPolicy="off" verticalScrollPolicy="off" height="{this.height-200}" width="{this.width-28}">
+		<mx:HBox width="100%" verticalAlign="middle">
+			<mx:ToggleButtonBar x="10" y="23" id="tbr_engine" dataProvider="viewstack1" visible="true" enabled="true" height="26"  >
+			</mx:ToggleButtonBar>
+			<mx:Image x="13" y="4" source="@Embed('assets/1leftarrow.png')" click="historyGo(-1)"  buttonMode="true"  />
+			<mx:Image x="33" y="4" source="@Embed('assets/1rightarrow.png')" click="historyGo(1)"  buttonMode="true"  />
+			<mx:Image x="55" y="4" source="@Embed('assets/stop.png')" click="loadCancel()"  buttonMode="true"   visible="false" />
+			<mx:Image x="76" y="4" source="@Embed('assets/arrow_refresh.png')" click="reload()"  buttonMode="true"  visible="false" />
+			<mx:Image x="97" y="4" source="@Embed('assets/internet_web_browser.png')" click="browserOpen()"  buttonMode="true"   visible="false" />
+		</mx:HBox>
+		<mx:ViewStack id="viewstack1" x="10" y="49" height="100%" width="100%" change="selectView()"  >
+			<!--mx:Canvas id="c0" label="Smart.fm"  x="0" y="0" width="100%" height="100%" borderThickness="0" >
+				<views:smartfmWindow id="browser0" spelling="{_searchText}" x="0" y="0" width="100%" height="100%" paddingLeft="5" />
+			</mx:Canvas-->
+			<mx:Canvas id="c0" label="weblio"  x="0" y="0" width="100%" height="100%" borderThickness="0" >
+				<mx:HTML id="browser0" location="http://ejje.weblio.jp/content/{_searchText}" x="0" y="0" width="100%" height="100%" paddingLeft="5" locationChange="html_load(event);" complete="html_complete(event);browser0.verticalScrollPosition=200" />
+			</mx:Canvas>
+			<mx:Canvas id="c1" label="goo辞書"  x="0" y="0" width="100%" height="100%" borderThickness="0" >
+				<mx:HTML id="browser1" location="http://dictionary.goo.ne.jp/srch/ej/{_searchText}/m0u/" x="0" y="0" width="100%" height="100%" paddingLeft="5" locationChange="html_load(event);" complete="html_complete(event);browser1.verticalScrollPosition=200" />
+			</mx:Canvas>
+			<mx:Canvas id="c2" label="ロングマン英英"  x="0" y="0" width="100%" height="100%" borderThickness="0" >
+				<mx:HTML id="browser2" location="http://www.ldoceonline.com/search/?q={_searchText}&amp;x=70&amp;y=171"  x="0" y="0" width="100%" height="100%"  paddingLeft="5" locationChange="html_load(event);" complete="html_complete(event);" />
+			</mx:Canvas>
+			<mx:Canvas id="c3" label="英辞郎" x="0" y="0" width="100%" height="100%" borderThickness="0" >
+				<mx:HTML id="browser3" location="http://eow.alc.co.jp/{_searchText}/UTF-8/?ref=sa" x="0" y="0" width="100%" height="100%"  paddingLeft="5" locationChange="html_load(event);" complete="html_complete(event);" />
+			</mx:Canvas>
+			<mx:Canvas id="c4" label="compleat lexical tutor"  x="0" y="0" width="100%" height="100%" borderThickness="0" >
+				<mx:HTML id="browser4" location="http://lexinote.com/AIR/browser/ccs.php?w={_searchText}" x="0" y="0" width="100%" height="100%"  paddingLeft="5" locationChange="html_load(event);" complete="html_complete(event);" />
+			</mx:Canvas>
+		</mx:ViewStack>
+	</mx:VBox>
+</mx:VDividedBox>
+</mx:Canvas>

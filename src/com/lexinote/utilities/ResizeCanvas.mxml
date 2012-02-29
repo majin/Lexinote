@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml"
+	mouseDown="handleMouseDown(event)">
+	<mx:Script>
+		<![CDATA[
+			import mx.containers.TitleWindow;
+			import mx.managers.PopUpManager;
+			import mx.managers.CursorManager;
+						
+			private function handleMouseDown(event:MouseEvent):void {
+				if (Math.abs(this.width - event.localX)<10 && 
+					Math.abs(this.height - event.localY)<10) {
+					event.stopImmediatePropagation();
+					this.useHandCursor = true;
+					systemManager.addEventListener(MouseEvent.MOUSE_MOVE, handleMouseMove);
+					systemManager.addEventListener(MouseEvent.MOUSE_UP, handleMouseUp);
+//					systemManager.addEventListener(MouseEvent.MOUSE_OUT, handleMouseUp);
+				}
+			}
+			private function handleMouseMove(event:MouseEvent):void {
+		//		event.stopImmediatePropagation();
+				this.width = Math.max(50, event.stageX - this.x);
+				this.height = Math.max(50, event.stageY - this.y);
+				this.invalidateDisplayList();
+			}
+			private function handleMouseUp(event:MouseEvent):void {
+		//		event.stopImmediatePropagation();
+				systemManager.removeEventListener(MouseEvent.MOUSE_MOVE, handleMouseMove);
+				systemManager.removeEventListener(MouseEvent.MOUSE_UP, handleMouseUp);
+//				systemManager.removeEventListener(MouseEvent.MOUSE_OUT, handleMouseUp);
+			}
+			
+		]]>
+	</mx:Script>
+</mx:Canvas>

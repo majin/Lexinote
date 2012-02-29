@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" 
+	xmlns:utilities="com.lexinote.utilities.*"
+	width="375" height="222" backgroundColor="#FFFFFF"  show="myShow()" >
+
+	<mx:Script>
+		<![CDATA[
+			import mx.events.CloseEvent;
+			import mx.core.Application;
+			import mx.managers.PopUpManager;
+			import mx.managers.PopUpManagerChildList;
+						
+			private function myShow():void {
+				btnOK.setFocus();
+			}
+			private function ok(e:Event=null):void {
+				var request:URLRequest;
+				var loader:URLLoader;
+
+//				if(Application.application.isLogin()) {
+//					request = new URLRequest(Application.application._uteuteURL+"user.php?op=logout");
+//					loader = new URLLoader();
+//					loader.addEventListener(Event.COMPLETE, ok, false, 0, true);
+//					loader.load(request);
+//					
+//					Application.application.setLogout();
+//					return;
+//				}				
+//				
+ 				request = new URLRequest("http://lexinote.com/AIR/tools/login.php");
+ 				var variables:URLVariables = new URLVariables();
+				variables.dogname = username.text;
+	            variables.passwd = passwd.text;
+				request.data = variables;
+				request.method = URLRequestMethod.POST;
+            
+//				navigateToURL(request);
+
+				loader = new URLLoader();
+				loader.addEventListener(Event.COMPLETE, onC, false, 0, true);
+				loader.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler, false, 0, true);
+				
+				loader.load(request);
+			}
+			private function onC(e:Event):void {
+				var result:String = e.target.data as String;
+				if(result == "#error") {
+					errMsg.setStyle("color",0xff0000);
+					errMsg.text = "最新のlexinoteに更新してください。";
+				}else
+				if(result == "#NG") {
+					errMsg.setStyle("color",0xff0000);
+					errMsg.text = "認証されませんでした";
+				}else
+				if(result == "#OK") {
+					errMsg.setStyle("color",0x0000ff);
+					errMsg.text = "認証されました。";
+					btnOK.visible = false;
+					btnCANCEL.label = "閉じる";
+					newA.visible = false;
+					Application.application.setLogin(username.text, passwd.text);
+				}else {
+					//Unknown error					
+					mx.controls.Alert.show(e.target.data); 
+				}
+				//mx.controls.Alert.show(e.target.data); 
+
+			}
+			private function ioErrorHandler(e:Event):void {
+				errMsg.text = "接続できませんでした。";
+			}
+			
+			
+			private function cancel():void {
+ 				this.visible = false;
+ 			}
+ 			
+ 			private function newAccount():void {
+ 				var newAccountWin:newAccountWindow = newAccountWindow(
+					PopUpManager.createPopUp(this, newAccountWindow, true, PopUpManagerChildList.POPUP));
+//				loginWin.addEventListener(CloseEvent.CLOSE, saveNextHandler);
+				newAccountWin.parentChanged(this);
+				newAccountWin.move(this.x, this.y);
+				newAccountWin.visible = true; 			}
+		]]>
+	</mx:Script>
+	<mx:Label text="アカウントの認証" y="10" fontSize="14" horizontalCenter="0" color="#2B4B8C" fontWeight="bold"/>
+	<mx:Label y="55" text="ニックネーム：" x="67" fontWeight="bold"/>
+	<mx:Label y="92" text="パスワード ：" x="70" fontWeight="bold"/>
+	<mx:Label y="123" fontWeight="bold" color="#FE0505" width="161" textAlign="center" id="errMsg" horizontalCenter="0"/>
+	<mx:TextInput y="53" x="163" id="username" width="143" borderColor="#AAAAAA"/>
+	<mx:TextInput y="90" x="163" displayAsPassword="true" id="passwd" width="143" borderColor="#AAAAAA"/>
+	<utilities:EnterButton  id="btnOK" label="OK" icon="@Embed('assets/ok.png')" click="ok()"  x="58" y="154" width="130" textAlign="center"/>
+	<utilities:EnterButton  id="btnCANCEL" label="キャンセル" icon="@Embed('assets/cancel.png')" click="cancel()"  x="196" y="154" width="130" />
+	<mx:LinkButton y="187" id="newA" label="&gt;&gt;&gt; アカウントを作成" horizontalCenter="94" color="#002AFC" click="newAccount()" fontWeight="normal" fontSize="13"/>
+
+</mx:Canvas>

@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Panel 
+	xmlns:mx="http://www.adobe.com/2006/mxml"
+	xmlns:utilities="com.lexinote.utilities.*"
+	width="100%" height="100%" horizontalAlign="center" layout="absolute" currentState="stateOK" verticalScrollPolicy="off">
+	<mx:Script>
+		<![CDATA[
+			import mx.core.Application;
+			import mx.controls.Alert;
+			import com.lexinote.utilities.voice.VoiceAPILoader;	
+			import com.lexinote.utilities.voice.VoicePlayer;
+			import mx.managers.CursorManager;
+			private var _vapi:VoiceAPILoader;
+
+			private var _word:Object;
+			private var _retryCount:Number;
+			
+			public function init(word:Object):void {
+				_word = word;
+				_retryCount = 0;
+				if(_word.example == "") {
+					example.text = "　例文の練習をしましょう。";
+				}else {
+					example.text = _word.example;				
+				}
+				
+				meaning.text = _word.xmeaning;
+
+				hint.visible = false;
+				meaning.visible = true;
+				sound.visible = false;
+				example.visible = false;
+				correct.visible = false;
+				correct2.visible = false;
+				incorrect.visible = false;
+				this.currentState = "stateOK";				
+				
+				var s:String = "";
+				for(var i:Number=0; i<_word.spelling.length; i++) {
+					s += "_";
+				}
+				dummySpelling.text = s;
+				inputSpelling.text = "";
+				inputSpelling.maxChars = _word.spelling.length;
+				inputSpelling.setFocus();
+				
+				this.addEventListener(KeyboardEvent.KEY_DOWN, function (event:KeyboardEvent):void
+				{
+					if (event.keyCode == Keyboard.ENTER) {
+						judge();
+					}
+				});
+
+			}
+			
+			private function judge():void {
+				var s:String = "";
+				Application.application.outputLog(_word.id, _word.spelling, "study", "study2_1", "judge", inputSpelling.text);
+				if(inputSpelling.text.toLowerCase() == _word.spelling.toLowerCase()) {
+					example.visible = true;
+					sound.visible = true;
+					for(var i:Number=0; i<_word.spelling.length; i++) {
+						s += " ";
+					}
+					dummySpelling.text = s;
+					this.currentState = "stateNext";
+					incorrect.visible = false;
+					if(_retryCount == 0) {
+						correct.visible = true;
+					}else {
+						correct2.visible = true;
+						
+					}
+					hint.visible = false;
+				}else {
+					var hintFlag:Boolean = false;
+					var hintStr:String = "";
+					for(i=0; i<_word.spelling.length; i++) {
+						if(inputSpelling.text.length > i &&
+						 inputSpelling.text.toLowerCase().charAt(i) == _word.spelling.toLowerCase().charAt(i)) {
+							s += " "; //_word.spelling.charAt(i);
+							hintStr += _word.spelling.charAt(i);
+						}else {
+							s += "_";
+							if(!hintFlag) {
+								hintStr += _word.spelling.charAt(i);
+								hintFlag = true;
+							}else {
+								hintStr += "_";
+							}
+						}
+					}
+					hint.text = hintStr;
+					hint.visible = true;
+					dummySpelling.text = s;
+					_retryCount++;
+					incorrect.visible = true;
+				}
+			}
+			private function retry():void {
+				parentDocument.nextWord();
+			}
+
+			private function goNext():void {
+				if(_retryCount == 0) {
+					parentDocument.correctWord(_word);
+				}
+				parentDocument.nextWord();
+			}
+			
+			private function voicePlay(txt:String):void {
+				if(txt.replace(" ", "") == "") {
+					return;
+				}
+				_vapi = new VoiceAPILoader();
+				_vapi.addEventListener(Event.COMPLETE, handleVoicePlay, false, 0, true);
+				_vapi.getVoiceData(txt);
+			}
+			
+			private function handleVoicePlay(event:Event):void 
+			{
+				CursorManager.removeBusyCursor();
+
+//		        var vp:VoicePlayer = new VoicePlayer();
+//		        vp.play(_vapi.data );
+			}
+			
+			private function dummy():void {
+				/* 	なぜかこれがなければボタンが表示されず */
+			}
+			
+			private function onResize(e:Event):void {
+				inputSpelling.width = dummySpelling.width;
+			}
+		]]>
+	</mx:Script>
+	<mx:Image id="correct" source="@Embed('assets/correct.png')" y="180"  horizontalCenter="0" alpha="0.3" />
+	<mx:Image id="correct2" source="@Embed('assets/correct2.png')" y="180"  horizontalCenter="0" alpha="0.3" />
+	<mx:Image id="incorrect" source="@Embed('assets/incorrect.png')" y="180"  horizontalCenter="0" alpha="0.3" />
+
+	<mx:Label text="この意味の英語をタイピングできますか？" fontSize="23" horizontalCenter="0" x="101" y="66" color="#682406" id="label1"/>
+	<mx:Label y="114" fontSize="30" color="#2323F2" horizontalCenter="0" id="meaning" width="{this.width-30}" textAlign="center" toolTip="{meaning.text}"/>
+	<mx:Image id="sound" source="@Embed('assets/sound.png')" y="224" visible="true" click="voicePlay(_word.spelling)" horizontalCenter="0" width="64" height="64" buttonMode="true"/>
+	
+	<mx:Label y="170" fontSize="44" horizontalCenter="0" id="dummySpelling" color="#999999" resize="onResize(event)" fontFamily="ＭＳ ゴシック,Osaka－等幅" paddingLeft="5" paddingRight="5" />
+	<mx:TextInput y="168" fontSize="44" horizontalCenter="0" id="inputSpelling" backgroundAlpha="0.5" paddingLeft="0" paddingRight="0" restrict="[a-zA-Z ']" fontFamily="ＭＳ ゴシック,Osaka－等幅" />
+	<mx:Label y="230" fontSize="44" color="#cccccc" horizontalCenter="0" id="hint"/>
+	<mx:TextArea width="468" fontSize="27" id="example" color="#047A26" height="94" borderStyle="none" horizontalScrollPolicy="auto" verticalScrollPolicy="off"
+		 buttonMode="true" toolTip="{example.text}" y="289" horizontalCenter="0" backgroundAlpha="0" editable="false" click="voicePlay(example.text)" textAlign="center"/>
+
+    <mx:transitions>
+        <mx:Transition id="myTransition1" fromState="*" toState="stateOK">
+            <mx:Parallel id="t1" targets="{[btnOK,btnRetry]}">
+                <mx:Fade duration="500" alphaFrom="0" />
+                <mx:Move duration="500" yFrom="{this.height+btnOK.height}" />
+            </mx:Parallel>
+        </mx:Transition>
+        <mx:Transition id="myTransition2" fromState="*" toState="stateNext">
+            <mx:Parallel id="t2" targets="{[btnNoNext]}">
+                <mx:Move duration="500" xFrom="{-btnNoNext.width}" />
+            </mx:Parallel>
+        </mx:Transition>
+     </mx:transitions>
+     
+	<mx:states>
+		<mx:State name="stateOK" enterState="inputSpelling.setFocus()">
+			<mx:AddChild position="lastChild">
+				<utilities:EnterButton id="btnOK" y="401" label="OK" width="222" height="90" fontSize="30" color="#065465" click="judge()" buttonMode="true" x="298"/>
+			</mx:AddChild>
+			<mx:AddChild position="lastChild">
+				<utilities:EnterButton id="btnRetry" y="401" label="後でやり直し" width="222" height="90" fontSize="30" color="#C2320B" click="retry()" buttonMode="true" x="52"/>
+			</mx:AddChild>
+		</mx:State>
+		<mx:State name="stateNext" enterState="btnNoNext.setFocus()">
+			<mx:AddChild position="lastChild">
+				<utilities:EnterButton id="btnNoNext" y="400" label="次の語へ" width="222" height="90" fontSize="30" color="#065465"  click="goNext()" buttonMode="true" x="179"/>
+			</mx:AddChild>
+		</mx:State>
+	</mx:states>
+</mx:Panel>

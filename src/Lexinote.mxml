@@ -1,0 +1,1304 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:WindowedApplication
+	xmlns:mx="http://www.adobe.com/2006/mxml"
+	xmlns:utilities="com.lexinote.utilities.*"
+	xmlns:views="com.lexinote.views.*"
+	xmlns:jx="net.jirox.*" 
+ 	layout="absolute"
+	backgroundAlpha="0.0"
+	verticalScrollPolicy="auto" horizontalScrollPolicy="auto" 
+	showStatusBar="false"
+	showTitleBar="false"
+	borderStyle="none" borderColor="#0668AC"
+	initialize="init()"
+	creationComplete="myComplete()"
+	alwaysInFront="false"
+	title="Lexinote"
+	top="0" left="0"
+	resize="myResize()"
+	closing="myExit()"
+	>
+
+<!--
+ top="5" left="5"
+ width="1270" height="730"
+	mouseDown="stage.nativeWindow.startMove();"
+	move="myMove()"
+
+-->
+	<mx:Style source="css/Lexinote.css"/>
+	<mx:Style source="css/Ratings.css"/>
+	<mx:Script>
+		<![CDATA[
+			import mx.events.CloseEvent;
+			import mx.controls.Alert;
+			import mx.utils.StringUtil;
+			import mx.core.Container;
+			import flash.display.Screen;
+			import mx.core.Application;
+			import mx.containers.Canvas;
+			import mx.managers.PopUpManager;
+			import mx.managers.PopUpManagerChildList;
+			import mx.events.FlexEvent;
+			import mx.collections.ArrayCollection;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.rpc.http.mxml.HTTPService;
+			import mx.managers.CursorManager;
+			import mx.formatters.DateFormatter;
+
+			import jp.cre8system.framework.airrecord.db.ARDatabase;
+
+			import com.lexinote.models.*;
+			import com.lexinote.views.*;
+			import flash.display.MovieClip;
+			import flash.events.*;
+		    import mx.core.MovieClipLoaderAsset;
+		    import com.lexinote.utilities.*;
+		    import com.adobe.serialization.json.JSON;
+		    
+			private var _wordModel:Word;
+			private var _word:Object = null;
+			private var _logModel:Log;
+			public var _login:Boolean = false;
+			private var myIP:String ="offline";
+			private var myUserID:String ="";
+/*
+    [Embed(source = 'assets/avatar/stage_flower.swf')]
+    private var StageFlower: Class;
+*/
+//			private var _stageMc: MovieClip;			
+//			private var _dogMc: MovieClip;			
+			public var myRepositoryPath:File;
+//			public var  _bloggerURL:String = "http://vLexinote.blogspot.com/";				
+//			public var  _bloggerURL:String = "http://lilaps.wordpress.com/";		
+		
+			public var  _bloggerURL:String = "http://lexinote.com/wp/newslex/";
+
+			private function myResize():void {
+				if(!myViewStack || !mainWin || !inputWin) {
+					return;
+				}
+				myViewStack.width = this.width - mainWin.width-10;				
+				myViewStack.height = this.height - 5;
+				
+//				inputWin.height = this.height - mainWin.height;	
+			}
+
+			private function init():void {
+//				mainWin.visible = false;
+//				inputWin.enabled = false;
+				candidateWin.visible = false;
+
+//				myViewStack.visible = false;
+//				browserWin.visible = false;
+//				feedWin.visible = false;
+//				shareWin.visible = false;
+//				listWin.visible = false;
+//				studyWin.visible = false;
+			}
+
+			public function getUserID():String {
+				return myUserID;
+			}
+
+			private function autoLogin(uid:String, pwd:String):void {
+				var request:URLRequest;
+				var loader:URLLoader;
+ 				request = new URLRequest("http://lexinote.com/AIR/tools/login.php");
+ 				var variables:URLVariables = new URLVariables();
+				variables.dogname = uid;
+	            variables.passwd = pwd;
+				request.data = variables;
+				request.method = URLRequestMethod.POST;
+				loader = new URLLoader();
+				loader.addEventListener(Event.COMPLETE, onLogined, false, 0, true);
+				loader.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler, false, 0, true)	;
+				loader.load(request);
+				
+				myUserID = uid;
+				myName.text = uid;
+				myNameBox.setStyle("backgroundColor", 0xffffff);
+
+			}
+
+			public function isLogin():Boolean {
+				return _login;
+			}
+			public function setLogin(userid:String, passwd:String):void {
+				_login = true;
+				
+				myUserID = userid;
+				myName.text = userid;
+				myNameBox.setStyle("backgroundColor", 0xffffff);
+				/*DB保存*/
+				var paramModel:Param = new Param();
+				var uid:Object = paramModel.findone({key:"username"});
+				var pwd:Object = paramModel.findone({key:"password"});
+				if(uid != null) {
+					paramModel.key = "username";
+					paramModel.value = userid;
+					paramModel.update({key:"username"});
+				}else {
+					paramModel.insert({key:"username", value:userid});
+				}
+				if(pwd != null) {
+					paramModel.key = "password";
+					paramModel.value = passwd;
+					paramModel.update({key:"password"});
+				}else {
+					paramModel.insert({key:"password", value:passwd});
+				}
+				getFeed();
+
+			}
+			public function setLogout():void {
+				_login = false;
+			}
+			
+			private function dbInitialyze():void {
+				var usbFile:File = File.applicationDirectory.resolvePath("usbBoot.ini");
+				if(usbFile.exists) {  //USBから起動された場合は、USBのDBを使う
+					myRepositoryPath = File.applicationDirectory.resolvePath("data");
+					if(!myRepositoryPath.exists) {
+						myRepositoryPath.createDirectory();
+					}
+				}else {
+					myRepositoryPath = File.applicationStorageDirectory;
+				}
+				
+				var dbFile:File = myRepositoryPath.resolvePath("Lexinote.db");
+				var dbNewFile:File = myRepositoryPath.resolvePath("Lexinote.new");
+				if (dbNewFile.exists) {
+					/* bkup -----*/
+					var dbBkupFile:File;
+					var dbBkupFile2:File;
+					for(var i:Number=9; i>=1; i--) {
+						 dbBkupFile = myRepositoryPath.resolvePath("Lexinote_bkup"+i+".db");
+						 if(dbBkupFile.exists) {
+						 	dbBkupFile2 = myRepositoryPath.resolvePath("Lexinote_bkup"+(i+1)+".db");
+						 	dbBkupFile.moveTo(dbBkupFile2, true);
+						 }
+					}
+					dbBkupFile = myRepositoryPath.resolvePath("Lexinote_bkup1.db");
+					dbFile.moveTo(dbBkupFile, true);
+					/* bkup -----*/
+					
+					/*new -> db*/
+					dbNewFile.moveTo(dbFile, true);
+				}
+				var src:File = File.applicationDirectory.resolvePath("template/Lexinote.db");
+	
+//				if (!dbFile.exists) { //	} || dbFile.modificationDate < src.modificationDate) { //更新日付が新しいときは上書き
+
+				if (!dbFile.exists || dbFile.modificationDate < new Date(2009, 9-1, 30)) { //更新日付が新しいときは上書き
+					src.copyTo(dbFile, true);
+				}
+				
+				var db:ARDatabase = ARDatabase.instance;
+				db.add(null, null,"Lexinote", null, "", myRepositoryPath.nativePath+File.separator);
+				db.connect();
+				ModelClasses;
+				
+				toeic_column();
+				
+				//10.05.13 bug fix mmaeda 
+				bugfix_100513();
+				
+				//09.11.09 bug fix mmaeda 
+				bugfix_091109();
+				
+				
+			}
+
+			private function bugfix_091109():void {
+				var result:SQLResult = _wordModel.query("select * from Words where spelling like '% '");
+				for(var i:Number=0; result.data != null && i<result.data.length; i++) {
+					var w:Object = result.data[i];
+					w.spelling = StringUtil.trim(w.spelling);
+					_wordModel.update({id:w.id}, {
+						spelling: w.spelling
+					});
+				}
+			}
+			private function bugfix_100513():void {
+				//このバージョンだけの暫定措置 2010.5.13 mmaeda
+				/*DB保存*/
+				var paramModel:Param = new Param();
+				var key:Object = paramModel.findone({key:"bugfix_100513"});
+				if(key == null) {
+					paramModel.insert({key:"bugfix_100513", value:"fixed"});
+
+					for each(var x:XML in toeicxml.TOEIC_SVLNO){
+						if(x.svl_id > 0){
+							trace(x.svl_id);
+							_wordModel.update({id: x.svl_id}, {
+								toeic_id: x.id
+							});	
+						}
+					}						
+				}
+			}
+			
+			private function bugfix_100921():void {
+				//このバージョンだけの暫定措置 2010.9.21 mmaeda
+				/*DB保存*/
+				var paramModel:Param = new Param();
+				var key:Object = paramModel.findone({key:"bugfix_100921"});
+				if(key == null) {
+					paramModel.insert({key:"bugfix_100921", value:"fixed"});
+					_wordModel.query("update Words set order_number=0");  
+				}
+			}
+			
+			private function toeic_column():void {
+				try {
+					var result:SQLResult = _wordModel.query("alter table Words add column toeic_id integer;");
+					for each(var x:XML in toeicxml.TOEIC_SVLNO){
+						if(x.svl_id > 0){
+							trace(x.svl_id);
+							_wordModel.update({id: x.svl_id}, {
+								toeic_id: x.id
+							});							
+						}else {
+							_wordModel.id = NaN;
+							_wordModel.spelling = x.item;
+							_wordModel.order_number = 0;
+							_wordModel.standard_meaning = x.meaning;
+							_wordModel.level = 0;
+							_wordModel.familiarity = 0;
+							_wordModel.istraining = 0;
+							_wordModel.photo_uri = "";
+							_wordModel.photo_comment = "";
+							_wordModel.count = 0;
+							_wordModel.created = 0;
+							_wordModel.modified = 0;
+							_wordModel.toeic_id = x.id;
+							_wordModel.insert();
+						}
+					}
+				}
+				catch(e:Error) {
+				}
+
+			}
+			
+			private function getIP():void {
+ 				var request:URLRequest = new URLRequest("http://lexinote.com/AIR/tools/getIP.php");
+				var loader:URLLoader = new URLLoader();
+				loader.addEventListener(Event.COMPLETE, getIPCompleteHandler);
+				loader.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler);
+				loader.load(request);
+			}
+			private function getIPCompleteHandler(e:Event):void {
+				this.myIP = e.target.data;
+			}
+			private function onLogined_bak(e:Event):void {
+				var request:URLRequest;
+				var loader:URLLoader;
+// 				request = new URLRequest(Application.application._uteuteURL+"modules/BopComments/backend.php");
+// 				request = new URLRequest(Application.application._bloggerURL+"feeds/posts/default");
+ 				request = new URLRequest(Application.application._bloggerURL+"feed/");
+				request.method = URLRequestMethod.GET;
+				loader = new URLLoader();
+//				loader.addEventListener(Event.COMPLETE, onGetItems, false, 0, true);
+				loader.addEventListener(Event.COMPLETE, onFeedItems, false, 0, true);
+				loader.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler, false, 0, true)	;
+				loader.load(request);
+			}
+
+			private function onLogined(e:Event):void {
+				var result:String = e.target.data as String;
+				if(result == "#OK") {
+					_login = true;
+				}
+				getFeed();
+			}
+			private function getFeed():void {
+				var service:HTTPService = new HTTPService();
+//				service.url = Application.application._bloggerURL+"feeds/posts/default";
+				service.url = Application.application._bloggerURL+"feed/";
+				service.showBusyCursor = true;
+				service.addEventListener(ResultEvent.RESULT, onFeedItems, false, 0, true);
+				service.addEventListener(FaultEvent.FAULT, onFeedError, false, 0, true);
+				
+				var parameters:Object = new Object();
+	//			parameters.part_of_speech = "v";
+	//			parameters.api_key = "b7r2gjqhhvj25tdakzfcadzv";
+				
+				service.send(parameters);
+			}
+			private function onFeedItems(event:ResultEvent):void {
+				bugfix_100921();
+
+				var items:ArrayCollection = event.result.rss.channel.item as ArrayCollection;
+				if(items == null) {
+					items = new ArrayCollection();
+					items.addItem(event.result.rss.channel.item);
+				}
+				for(var i:Number=0; i<items.length; i++) {
+					var title:String = items[i].title;
+					var link:String = items[i].link;
+					var pubDate:String = items[i].pubDate;
+//trace(pubDate.replace(/T/, " ").replace(/\-/g, "/").substr(0,19));
+//					var dd:Number = Date.parse(pubDate.replace(/T/, " ").replace(/\-/g, "/").substr(0,19));
+					var dd:Number = Date.parse(pubDate);
+	
+					var txt:String = title;
+					var result:Array = _wordModel.find({spelling: txt});
+					if(result && result.length > 0) {
+						var w:Object = result[0];
+//						var storyid:Number = i+1;					
+						var storyid:Number = items.length-i;					
+
+//if(dd < new Date(2010, 3-1, 1).getTime()) { // 2010/3/1 からが課題対象
+//continue;
+//}
+
+						storyid += 1000; //昨年と区別するため
+						if(w.order_number == 0 || w.order_number != storyid || w.created != dd) {
+							_wordModel.update({id:w.id}, {
+								order_number: storyid,
+								created: dd
+							});
+//						}else {
+//							break;
+						}
+					}
+				}
+			}
+			private function onFeedItems_bloger(event:ResultEvent):void {
+				var items:ArrayCollection = event.result.feed.entry as ArrayCollection;
+				for(var i:Number=0; i<items.length; i++) {
+					var title:String = items[i].title;
+					var link:String = items[i].link[0].ref;
+					var pubDate:String = items[i].published;
+//trace(pubDate.replace(/T/, " ").replace(/\-/g, "/").substr(0,19));
+					var dd:Number = Date.parse(pubDate.replace(/T/, " ").replace(/\-/g, "/").substr(0,19));
+	
+					var txt:String = title;
+					var result:Array = _wordModel.find({spelling: txt});
+					if(result && result.length > 0) {
+						var w:Object = result[0];
+//						var storyid:Number = i+1;					
+						var storyid:Number = items.length-i;					
+
+//if(dd < new Date(2010, 3-1, 1).getTime()) { // 2010/3/1 からが課題対象
+//continue;
+//}
+
+						if(w.order_number == 0 || w.order_number != storyid || w.created != dd) {
+							_wordModel.update({id:w.id}, {
+								order_number: storyid + 1000,	//	昨年と区別するため+1000
+								created: dd
+							});
+//						}else {
+//							break;
+						}
+					}
+				}
+			}
+			private function onFeedError(event:FaultEvent):void {
+				CursorManager.removeAllCursors();
+			}
+				
+			private function onGetItems_bak(e:Event):void {
+				var xml:XMLList = XML(e.target.data as String).channel.item;
+				for(var i:Number=0; i<xml.length(); i++) {
+					var title:String = xml[i].title;
+					var link:String = xml[i].link;
+					var pubDate:String = xml[i].pubDate;
+					var dd:Number = Date.parse(pubDate.replace(/JST/, ""));
+
+					var hits:Array = title.match(/ニュース\ :\ BizValley\ :\ ([a-zA-Z ]+)$/);					
+					if(hits) {
+//						trace(hits[1]);
+						var txt:String = hits[1];
+						var result:Array = _wordModel.find({spelling: txt});
+						if(result && result.length > 0) {
+							var w:Object = result[0];
+							var storyid:Array = link.match(/storyid=([0-9]+)/);					
+
+if(dd < new Date(2009, 10-1, 6).getTime()) { // 2009/10/6 からが課題対象
+	continue;
+}
+
+							if(w.order_number == 0 || w.order_number != storyid) {
+								_wordModel.update({id:w.id}, {
+									order_number: storyid[1],
+									created: dd
+								});
+							}else {
+								break;
+							}
+						}
+					}
+				}
+//				trace(e.target.data);
+			}
+
+			private function ioErrorHandler(e:Event):void {
+//			mx.controls.Alert.show("通信エラー");
+			}
+
+			private var _cmiRequest:URLRequest = null;
+			private var _cmiLoader:URLLoader = null;
+			private var _cmiVariables:URLVariables = null;
+			
+			public function outputLog(word_id:Number=0, spelling:String="", category:String="", module:String="", action:String="", data:String=""):void {
+				if(word_id == 0 && _word != null) {
+					_logModel.word_id = _word.id;
+				}else {
+					_logModel.word_id = word_id;
+				}	
+				if(spelling == "" && _word != null) {
+					_logModel.spelling = _word.spelling;
+				}else {
+					_logModel.spelling = spelling;
+				}
+				_logModel.category = category;
+				_logModel.module = module;
+				_logModel.action = action;
+				_logModel.data = data;
+				_logModel.ip = this.myIP;
+				_logModel.insertdate = getSQLDateString();
+				_logModel.insert();
+				
+				/* add cmi */
+//				if(_cmiRequest == null) {
+//	  				_cmiRequest = new URLRequest("http://lexinote.com/AIR/tools/addCmi.php");
+// 					_cmiVariables = new URLVariables();
+// 					_cmiLoader = new URLLoader();
+//					_cmiLoader.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler, false, 0, true)	;
+//					/* Loaderはメモリを食うので毎回生成せず・・・*/
+//				}
+				
+				var cmiRequest:URLRequest = new URLRequest("http://lexinote.com/AIR/tools/addCmi.php");
+				var cmiLoader:URLLoader  = new URLLoader();
+				var cmiVariables:URLVariables = new URLVariables();
+
+				
+				cmiVariables.userid = myUserID;           
+				cmiVariables.word_id = word_id;
+				cmiVariables.spelling = spelling;
+				cmiVariables.category = category;
+				cmiVariables.module = module;
+				cmiVariables.action = action;
+				cmiVariables.data = data;
+				cmiVariables.ip = this.myIP;
+				cmiVariables.insertdate = _logModel.insertdate;
+				
+				cmiRequest.data = cmiVariables;
+				cmiRequest.method = URLRequestMethod.POST;
+				cmiLoader.load(cmiRequest);		
+			}
+
+			private function getSQLDateString():String {
+				var my_date:Date = new Date();
+				var nSeconds:Number = my_date.seconds;
+				var nMinutes:Number = my_date.minutes;
+				var nHours:Number = my_date.hours;
+				var nYear:Number = my_date.fullYear;
+			  	var nMonth:Number = my_date.month+1;
+			  	var nDate:Number = my_date.date;
+			  	var year_str:String = String(nYear);
+			  	var month_str:String = String(nMonth+100).substring(1);
+			  	var date_str:String = String(nDate+100).substring(1);
+			  	var hours_str:String = String(nHours+100).substring(1);
+			  	var minutes_str:String = String(nMinutes+100).substring(1);
+			  	var seconds_str:String = String(nSeconds+100).substring(1);
+			  	return year_str +"-"+ month_str +"-"+ date_str +" "+ hours_str +":"+ minutes_str +":"+ seconds_str;
+			}
+
+			private function getDateString():String {
+				var my_date:Date = new Date();
+				var nSeconds:Number = my_date.seconds;
+				var nMinutes:Number = my_date.minutes;
+				var nHours:Number = my_date.hours;
+				var nYear:Number = my_date.fullYear;
+			  	var nMonth:Number = my_date.month+1;
+			  	var nDate:Number = my_date.date;
+			  	var year_str:String = String(nYear).substring(2);
+			  	var month_str:String = String(nMonth+100).substring(1);
+			  	var date_str:String = String(nDate+100).substring(1);
+			  	var hours_str:String = String(nHours+100).substring(1);
+			  	var minutes_str:String = String(nMinutes+100).substring(1);
+			  	var seconds_str:String = String(nSeconds+100).substring(1);
+			  	return year_str + month_str + date_str + hours_str + minutes_str + seconds_str;
+			}
+
+			private function myComplete():void {
+				_wordModel = new Word();
+				_logModel  = new Log();
+				dbInitialyze();
+				
+				getIP();			
+				getFeed();
+						
+//				this.width = Screen.mainScreen.visibleBounds.width;
+//				this.height = Screen.mainScreen.visibleBounds.height;
+//				this.width = mainWin.width+myViewStack.width;
+//				this.height = mainWin.height+inputWin.height;
+
+				/*自動ログイン*/
+				var paramModel:Param = new Param();
+				var uid:Object = paramModel.findone({key:"username"});
+				var pwd:Object = paramModel.findone({key:"password"});
+				if(uid != null) {
+					autoLogin(uid.value, pwd.value);
+				}
+
+
+				mainWin.visible = true;
+				
+				this.addEventListener(KeyboardEvent.KEY_DOWN, function (event:KeyboardEvent):void
+				{
+					if (event.keyCode == Keyboard.ENTER) {
+						if(!inputWin.visible || inputWin.spelling != keyword.text) {
+							editWord();
+						}else {
+							searchWord();
+						}
+					}
+				});
+
+				var timerCount:Timer = new Timer(1000);
+				timerCount.start();
+				timerCount.addEventListener(TimerEvent.TIMER, nowTime);
+				nowTime();
+				
+				/* 位置サイズ情報の取得*/				
+				var mw:Object = paramModel.findone({key:"mainWin"});
+//				var iw:Object = paramModel.findone({key:"inputWin"});
+//				var vs:Object = paramModel.findone({key:"myViewStack"});
+				
+				restoreWinInfo(mw, this);
+//				restoreWinInfo(iw, inputWin);
+//				restoreWinInfo(vs, myViewStack);
+
+				var appDescriptor:XML = NativeApplication.nativeApplication.applicationDescriptor;
+				var ns:Namespace = appDescriptor.namespace();
+				var appVersion:String = appDescriptor.ns::version;
+				myLogo.toolTip = "Ver."+appVersion;
+//				myBuild.text = "build."+appVersion;
+
+				displayCount();
+				viewFeed(null);
+
+				runWin.init();
+			}
+
+			private var _defaultPosition:Boolean = false;
+			private var _sa_x:Number = 0;
+			private var _sa_y:Number = 0;
+			private function restoreWinInfo(p:Object, w:Sprite):void {
+
+				if(p == null || _defaultPosition) {
+					return;
+				}
+				var o:Object = JSON.decode(p.value);
+				
+				if(o.x >= this.width-10 || o.y >= this.height-10) {
+					_defaultPosition = true;
+					return;
+				}
+				if(o.x < 0) {
+					_sa_x = o.x * (-1);
+				}
+				if(o.y < 0) {
+					_sa_y = o.y * (-1);
+				}
+//				w.x = o.x + _sa_x;
+//				w.y = o.y + _sa_y;
+
+				if(o.width >= 10) {
+					w.width = o.width;
+				}
+				if(o.height >= 10) {
+					w.height = o.height;
+				}
+			}
+			
+			private function nowTime(e:TimerEvent = null):void {
+				var now:Date = new Date();
+				var d:String = now.toLocaleDateString();
+				d = d.substr(0,3)+". "+d.substr(4,3)+". "+d.substr(8);
+				var t:String = now.toLocaleTimeString();
+				t = t.substr(0,5)+" "+t.substr(9);
+//				today.text = d+" "+t;
+			}
+			
+			public function displayCount():void {
+				var result:SQLResult;
+				result = _wordModel.query("select count(id) from Words");
+//				allCount.text = "総ｱｲﾃﾑ数："+result.data[0]["count(id)"];
+				result = _wordModel.query("select count(id) from Words where familiarity=5");
+//				result = _wordModel.query("select count(id) from Words where familiarity=5 and created<>0 and modified<>0");
+				var r1:Number = Number(result.data[0]["count(id)"]);
+				result = _wordModel.query("select count(id) from Words where created=0 and modified<>0");
+//				result = _wordModel.query("select count(id) from Words where familiarity=5 and created=0 and modified<>0");
+				var r2:Number = Number(result.data[0]["count(id)"]);
+
+				result = _wordModel.query("select count(id) from Words where familiarity>0");
+				var r3:Number = Number(result.data[0]["count(id)"]);
+
+				result = _wordModel.query("select count(id) from Words where istraining>0 and familiarity<5");
+				var r4:Number = Number(result.data[0]["count(id)"]);
+				completeCount.text = "登録："+r3+" 学習中："+r4+" 学習済："+r1+" 使用："+r2;
+			}
+
+
+			private function myMove():void {
+				if(this.x < 0 || this.y < 0) {
+					Application.application.move(20, 20);
+				}
+			}
+
+
+			public function myMini():void {
+				nativeWindow.minimize();
+			}
+			public function myExit():void {
+				this.outputLog(0, "", "top", "shutdown", myUserID, completeCount.text);
+
+				var paramModel:Param = new Param();
+				saveWinInfo(paramModel, "mainWin", this);
+//				saveWinInfo(paramModel, inputWin);
+//				saveWinInfo(paramModel, myViewStack);
+
+//				studyWin.visible = false;
+				listWin.visible = false;
+//				shareWin.visible = false;
+				feedWin.visible = false;
+//				browserWin.visible = false;
+
+				candidateWin.visible = false;
+				inputWin.visible = false;
+				mainWin.visible = false;
+				
+				stage.nativeWindow.close();
+			}
+			private function saveWinInfo(p:Param, name:String, w:Sprite):void {
+				var o:Object = new Object();
+				o.x = w.x;
+				o.y = w.y;
+				o.width  = w.width;
+				o.height = w.height;
+				var mw:Object = p.findone({key: name});
+				if(mw == null) {
+					p.key = name;
+					p.value = JSON.encode(o);
+					p.insert();
+				}else {
+					p.key = name;
+					p.value = JSON.encode(o);
+					p.update({key: name});
+				}
+			}
+
+			private function myHide(c:Canvas):void {
+				c.visible = false;
+			}
+			
+			private function searchWord(e:Event= null):void {
+				if(!listWin._creationComplete) {
+					listWin.addEventListener(FlexEvent.CREATION_COMPLETE, searchWord);
+				}else {
+//					changeDog("runrun");
+//					listWin.setText(keyword.text);
+//					this.outputLog(0, "", "top", "browser", "search", keyword.text);
+					openList(false, "search");
+					this.outputLog(0, "", "top", "browser", "search", keyword.text);
+				}
+				if(myViewStack.selectedChild != listWin) {
+					myViewStack.selectedChild = listWin;
+				}
+				myViewStack.visible = true;
+				listWin.visible = true;
+				inputWin.closePhotoViewerWindow();
+				
+			}
+			
+			private function viewFeed(e:Event):void {
+				if(feedWin.browser == null) {
+					feedWin.addEventListener(FlexEvent.CREATION_COMPLETE, viewFeed);
+				}else
+				if(feedWin.browser.location == null) {
+					changeDog("runrun");
+					feedWin.browser.addEventListener(IOErrorEvent.IO_ERROR ,ioErrorHandler, false, 0,true);
+
+//					feedWin.browser.location = "http://blog.goo.ne.jp/jowlet/";
+//					feedWin.browser.location = _uteuteURL;
+					feedWin.browser.location = _bloggerURL;
+//					feedWin.browser.location = "http://www.youtube.com/";
+					this.outputLog(0, "", "top", "feed", "open", "");
+				}
+				if(myViewStack.selectedChild != feedWin) {
+					myViewStack.selectedChild = feedWin;
+				}
+				myViewStack.visible = true;
+				feedWin.visible = true;
+				inputWin.closePhotoViewerWindow();
+			}
+
+			private function viewList(e:Event):void {
+				openList(false, "portfolio");
+				this.outputLog(0, "", "top", "portfolio", "open", "");
+			}
+			
+			public function openList(level:Boolean, type:String=""):void {
+				keyword.text = keyword.text.replace(/^[ |　]+|[ |　]+$/g, ''); //Trim
+
+				if(myViewStack.selectedChild != listWin) {
+					myViewStack.selectedChild = listWin;
+				}
+				myViewStack.visible = true;
+				listWin.visible = true;
+
+				listWin.setOpenWord(keyword.text, type, level);
+
+				if(listWin._creationComplete) {
+					listWin.init();
+				}
+				inputWin.closePhotoViewerWindow();
+			}
+/*
+			public function viewStudy(e:Event):void {
+
+				if(myViewStack.selectedChild != studyWin) {
+					myViewStack.selectedChild = studyWin;
+				}
+				
+				if(studyWin._creationComplete) {
+					studyWin.init();
+				}
+				myViewStack.visible = true;
+				studyWin.visible = true;
+				inputWin.closePhotoViewerWindow();
+			}
+*/
+			public function editWord(txt:String=null):void {
+				if(txt == null) {
+					keyword.text = keyword.text.replace(/^[ |　]+|[ |　]+$/g, ''); //Trim
+				}else {
+					keyword.text = txt; //現状を保存するためのイベント発行
+				}
+				inputWin.spelling = keyword.text;
+				inputWin.visible = true;
+				this.outputLog(0, "", "top", "editWord", "edit", keyword.text);
+			}
+			
+			public function isSaveCheck():Boolean {
+				return inputWin.isSaveCheck();
+			}
+			
+			public function selectWord(w:String):void {
+				keyword.text = w;
+				editWord();
+			}
+			
+			public function saveEvent(w:Object):void {
+				if(listWin._creationComplete) {
+					listWin.saveEvent(w);
+				}
+				if(runWin._creationComplete) {
+					runWin.init();
+				}
+				if(myViewStack.visible && myViewStack.selectedChild != feedWin) {
+					openList(false);
+				}
+				displayCount();
+				changeDog("correct");
+
+				//Update word on server	
+				serverUpdateWord(w, updateWordHandler, ioErrorHandler);
+			}
+			
+			private var _myRequest:URLRequest = null;
+			private var _myLoader:URLLoader = null;
+			private var _myVariables:URLVariables = null;
+			private var _date_fmt:DateFormatter = new DateFormatter();
+
+			public function serverUpdateWord(w:Object, f:Function=null, fe:Function=null):void {
+				if(w != null && myUserID != "") {
+//					if(_myRequest == null) {
+		  				var myRequest:URLRequest = new URLRequest("http://lexinote.com/AIR/tools/updateWord.php");
+	 					var myVariables:URLVariables = new URLVariables();
+	 					var myLoader:URLLoader = new URLLoader();
+						/* Loaderはメモリを食うので毎回生成せず・・・*/
+						_date_fmt.formatString = "YYYY-MM-DD JJ:NN:SS";
+//					}
+					if(f == null) {
+						myLoader.addEventListener(Event.COMPLETE, updateWordHandler, false, 0, true);
+					}else {
+						myLoader.addEventListener(Event.COMPLETE, f, false, 0, true);
+					}
+					if(fe == null) {
+						myLoader.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler, false, 0, true)	;
+					}else {
+						myLoader.addEventListener(IOErrorEvent.IO_ERROR, fe, false, 0, true)	;
+					}
+					if(w.details == null) {
+						w.details = new Array;
+						w.details[0] = new Object();
+
+						var wordDetalModel:WordDetail = new WordDetail();
+						var wdetail:Array = wordDetalModel.find({
+							word_id: w.id
+						});
+						if(wdetail == null) {
+							w.details[0].wordclass = "";
+							w.details[0].meaning = "";
+							w.details[0].example = "";
+							w.details[0].definition = "";
+							w.details[0].relatedword = "";
+							w.details[0].yourproduction = "";		
+						}else {
+							w.details[0].wordclass = wdetail[0].wordclass;
+							w.details[0].meaning = wdetail[0].meaning;
+							w.details[0].example = wdetail[0].example;
+							w.details[0].definition = wdetail[0].definition;
+							w.details[0].relatedword = wdetail[0].relatedword;
+							w.details[0].yourproduction = wdetail[0].yourproduction;		
+						}
+					}
+					myVariables.dogname = myUserID;         
+					myVariables.word_id = w.id;         
+					myVariables.spelling = w.spelling;         
+					myVariables.order_number = w.order_number;         
+					myVariables.level = w.level;         
+					myVariables.familiarity = w.familiarity;         
+					myVariables.istraining = w.istraining;         
+					myVariables.photo_uri = (w.photo_uri==null)?"":w.photo_uri;         
+					myVariables.photo_comment = (w.photo_comment==null)?"":w.photo_comment;         
+					myVariables.count = w.count?w.count:0;         
+					myVariables.wordclass = w.details[0].wordclass;         
+					myVariables.meaning = w.details[0].meaning;         
+					myVariables.example = w.details[0].example;         
+					myVariables.definition = w.details[0].definition;         
+					myVariables.relatedword = w.details[0].relatedword;         
+					myVariables.yourproduction = w.details[0].yourproduction;         
+					myVariables.created = _date_fmt.format(new Date(w.created));         
+					myVariables.modified = w.modified==undefined?'':_date_fmt.format(new Date(w.modified));    
+					myVariables.memo = w.memo==undefined?'':w.memo;         
+					
+					myRequest.data = myVariables;
+					myRequest.method = URLRequestMethod.POST;
+					myLoader.load(myRequest);
+				}
+			}
+			public function serverUpdateWordRemoveListener(f:Function, fe:Function):void {
+//				_myLoader.removeEventListener(Event.COMPLETE, f, false);
+//				_myLoader.removeEventListener(IOErrorEvent.IO_ERROR, fe, false)	;
+			}
+			
+			private function updateWordHandler(e:Event):void {
+				serverUpdateWordRemoveListener(updateWordHandler, ioErrorHandler);
+
+				var result:String = e.target.data as String;
+				if(result != "#OK") {
+					Alert.show(result);
+				}
+			}
+						
+			public function loadEvent(w:Object):void {
+				if(listWin._creationComplete) {
+					listWin.loadEvent(w);
+				}
+				keyword.text = w.spelling;
+				_word = w;
+			}
+			
+
+/* 花ステージのデバック用
+			private var _frameNo:Number = 0;
+ 			private function setFrameStage():void {
+ 				_frameNo++;
+				this._stageMc.gotoAndStop(_frameNo+1);
+				this._stageMc.trackAsMenu = true;
+  			}
+*/
+
+/* アニメーションのデバック用
+			private var _frameNo:Number = 0;
+ 			private function setFrameStage():void {
+ 				changeDog("runrun");
+ 				/*
+ 				_frameNo++;
+ 				switch(_frameNo%6) {
+ 					case 1:changeDog("correct");break;
+ 					case 2:changeDog("incorrect");break;
+ 					case 3:changeDog("runrun");break;
+ 					case 4:changeDog("waiting");break;
+ 					case 5:changeDog("waiting2");break;
+  					case 0:changeDog("waiting_msg");break;
+				}
+  			}
+*/
+ 			private function setFrameStage():void {
+ 				changeDog("runrun");
+ 			}
+  			
+  			public function updateNotifty():void {
+				if(listWin._creationComplete) {
+					listWin.setOpenWord("");
+					listWin.init();
+				}
+				inputWin.spelling = keyword.text;
+				displayCount();
+  			}
+  			
+  			public function changeDog(kind:String="waiting"):void {
+  			}
+  			
+  			private function clickNamePanel():void {
+				var loginWin:loginWindow = loginWindow(
+					PopUpManager.createPopUp(this, loginWindow, true, PopUpManagerChildList.POPUP));
+//				loginWin.addEventListener(CloseEvent.CLOSE, saveNextHandler);
+				loginWin.move(mainWin.x+40, mainWin.y+40);
+				loginWin.visible = true;
+  			}
+
+
+
+//************ Import **************//			
+			private function clickImport():void {
+				var win:selectImportWindow = selectImportWindow(
+					PopUpManager.createPopUp(this, selectImportWindow, true, PopUpManagerChildList.POPUP));
+				win.addEventListener(CloseEvent.CLOSE, closeHandler, false, 0, true);
+				win.move(this.x+13, this.y+20);
+				win.parentChanged(this);
+				win.visible = true;
+			}
+			
+			private function closeHandler(event:Event):void {
+				event.target.visible = false;
+			}
+
+			public function serverImport():void {
+				if(_myRequest == null) {
+	  				_myRequest = new URLRequest("http://lexinote.com/AIR/tools/getMyWords.php");
+
+	 				_myVariables = new URLVariables();
+	 				_myLoader = new URLLoader();
+					_myLoader.addEventListener(Event.COMPLETE, getMyWordsHandler, false, 0, true);
+					_myLoader.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler, false, 0, true)	;
+					_myVariables.dogname = Application.application.getUserID();
+					_myRequest.data = _myVariables;
+					_myRequest.method = URLRequestMethod.POST;
+				}
+				_myLoader.load(_myRequest);
+				CursorManager.setBusyCursor();
+			}
+			private function getMyWordsHandler(e:Event):void {
+				var xml:XML = XML(e.target.data);
+				if(xml.@result != "OK") {
+					Alert.show("データの取得に失敗しました。");
+					return;
+				}
+				for each(var word:XML in xml.Word) {
+
+					var wordDetalModel:WordDetail = new WordDetail();
+					var wdetail:Array = wordDetalModel.find({
+						word_id: word.word_id
+					});
+					if(wdetail == null) {
+						wordDetalModel.word_id = word.word_id;
+						wordDetalModel.order_number = word.order_number;
+						wordDetalModel.wordclass = word.wordclass;
+						wordDetalModel.meaning = word.meaning;
+						wordDetalModel.example = word.example;
+						wordDetalModel.definition = word.definition;
+						wordDetalModel.relatedword = word.relatedword;
+						wordDetalModel.yourproduction = word.yourproduction;
+						wordDetalModel.created = Date.parse(String(word.created).replace(/\-/g, "/"));
+						wordDetalModel.modified = Date.parse(String(word.modified).replace(/\-/g, "/"));
+						if(isNaN(wordDetalModel.modified)) wordDetalModel.modified = 0;
+						wordDetalModel.insert();
+					}else {
+						wordDetalModel.word_id = word.word_id;
+						wordDetalModel.order_number = word.order_number;
+						wordDetalModel.wordclass = word.wordclass;
+						wordDetalModel.meaning = word.meaning;
+						wordDetalModel.example = word.example;
+						wordDetalModel.definition = word.definition;
+						wordDetalModel.relatedword = word.relatedword;
+						wordDetalModel.yourproduction = word.yourproduction;
+						wordDetalModel.created = Date.parse(String(word.created).replace(/\-/g, "/"));
+						wordDetalModel.modified = Date.parse(String(word.modified).replace(/\-/g, "/"));
+						if(isNaN(wordDetalModel.modified)) wordDetalModel.modified = 0;
+						wordDetalModel.update({word_id: word.word_id});
+					}
+				
+					var wordModel:Word = new Word();
+					var w:Array = wordModel.find({
+						id: word.word_id
+					});
+					if(w == null) {
+						wordModel.id = word.word_id;
+						wordModel.spelling = word.spelling;
+						wordModel.order_number = word.order_number;
+						wordModel.level = word.level;
+						wordModel.familiarity = word.familiarity;
+						wordModel.istraining = word.istraining;
+						wordModel.photo_uri = word.photo_uri;
+						wordModel.photo_comment = word.photo_comment;
+						wordModel.count = word.count;
+						wordModel.created = Date.parse(String(word.created).replace(/\-/g, "/"));
+						wordModel.modified = Date.parse(String(word.modified).replace(/\-/g, "/"));
+						if(isNaN(wordModel.modified)) wordModel.modified = 0;
+						wordModel.insert();
+					}else {				
+						wordModel.id = word.word_id;
+						wordModel.spelling = word.spelling;
+						wordModel.order_number = word.order_number;
+						wordModel.level = word.level;
+						wordModel.familiarity = word.familiarity;
+						wordModel.istraining = word.istraining;
+						wordModel.photo_uri = word.photo_uri;
+						wordModel.photo_comment = word.photo_comment;
+						wordModel.count = word.count;
+						wordModel.created = Date.parse(String(word.created).replace(/\-/g, "/"));
+						wordModel.modified = Date.parse(String(word.modified).replace(/\-/g, "/"));
+						if(isNaN(wordModel.modified)) wordModel.modified = 0;
+						wordModel.standard_meaning = w[0].standard_meaning;
+						wordModel.toeic_id = w[0].toeic_id;
+						wordModel.update({id: word.word_id});
+					}
+				}
+				CursorManager.removeBusyCursor();
+				Alert.show("lexinoteを終了します。再起動してください。","確認", Alert.OK,null,function():void {
+					Application.application.myExit();
+				});
+			}
+			
+			public function dbImport():void {
+				var dbFilter:FileFilter =
+				  new FileFilter("lexinoteバックアップファイル", "*.db");
+				
+				var root:File = File.documentsDirectory;
+				root.browseForOpen("バックアップを読み込む", [dbFilter]);
+				root.addEventListener(Event.SELECT, function(event:Event):void {
+				    var selectedFile:File = File(event.target);
+				    var targetFile:File = Application.application.myRepositoryPath.resolvePath("lexinote.new");
+					selectedFile.copyTo(targetFile, true);
+					Alert.show("lexinoteを終了します。再起動してください。","確認", Alert.OK,null,function():void {
+						Application.application.myExit();
+					});
+					Application.application.outputLog(0, "", "inputWin", "db", "import", selectedFile.nativePath);
+				}, false, 0, true);
+			}
+			
+//************ Export **************//			
+			private function clickExport():void {
+				var win:selectExportWindow = selectExportWindow(
+					PopUpManager.createPopUp(this, selectExportWindow, true, PopUpManagerChildList.POPUP));
+				win.addEventListener(CloseEvent.CLOSE, closeHandler, false, 0, true);
+				win.move(this.x+13, this.y+20);
+				win.parentChanged(this);
+				win.visible = true;
+			}
+
+/*
+			public function serverExport():void {
+				var date_fmt:DateFormatter = new DateFormatter();
+				date_fmt.formatString = "YYYY-MM-DD JJ:NN:SS";
+
+				var wordModel:Word = new Word();
+				var sr:SQLResult = wordModel.query("SELECT * FROM Words WHERE created <> 0");
+				var w:Array = sr.data as Array;
+				if(w.length > 0) {
+					var xml:XML = new XML("<Words />");
+					xml.@dogname = Application.application.getUserID();
+					for(var i:Number=0; i<w.length; i++) {
+						var word:XML = xml.appendChild("<Word />");
+						word.appendChild("<word_id>"+w[i].id+"</word_id>");					
+						word.appendChild("<spelling>"+w[i].spelling+"</spelling>");					
+						word.appendChild("<order_number>"+w[i].order_number+"</order_number>");					
+						word.appendChild("<level>"+w[i].level+"</level>");					
+						word.appendChild("<familiarity>"+w[i].familiarity+"</familiarity>");					
+						word.appendChild("<istraining>"+w[i].istraining+"</istraining>");					
+						word.appendChild("<photo_uri>"+w[i].photo_uri+"</photo_uri>");					
+						word.appendChild("<photo_comment>"+w[i].photo_comment+"</photo_comment>");					
+						word.appendChild("<count>"+w[i].count+"</count>");					
+						word.appendChild("<created>"+date_fmt.format(new Date(w[i].created))+"</created>");					
+						word.appendChild("<modified>"+date_fmt.format(new Date(w[i].modified))+"</modified>");					
+						word.appendChild("<memo>"+date_fmt.format(new Date())+"</memo>");					
+
+						var wordDetailModel:WordDetail = new WordDetail();
+						var wd:Array = wordDetailModel.find({word_id: w[i].id});
+						if(wd && wd.length > 0) {
+							word.appendChild("<wordclass>"+wd[0].wordclass+"</wordclass>");					
+							word.appendChild("<meaning>"+wd[0].meaning+"</meaning>");					
+							word.appendChild("<example>"+wd[0].example+"</example>");					
+							word.appendChild("<definition>"+wd[0].definition+"</definition>");					
+							word.appendChild("<relatedword>"+wd[0].relatedword+"</relatedword>");					
+							word.appendChild("<yourproduction>"+wd[0].yourproduction+"</yourproduction>");					
+						}else {
+							word.appendChild("<wordclass/>");					
+							word.appendChild("<meaning/>");					
+							word.appendChild("<example/>");					
+							word.appendChild("<definition/>");					
+							word.appendChild("<relatedword/>");					
+							word.appendChild("<yourproduction/>");					
+						}
+					}
+					
+					Alert.show(xml.toString());
+				}
+			}
+*/
+			private var exportWords:Array;
+			private var exportIndex:Number;
+			public function serverExport():void {
+				exportWords = new Array();
+				exportIndex = 0;
+				var date_fmt:DateFormatter = new DateFormatter();
+				date_fmt.formatString = "YYYY-MM-DD JJ:NN:SS";
+
+				var wordModel:Word = new Word();
+				var sr:SQLResult = wordModel.query("SELECT * FROM Words WHERE created <> 0 OR modified <> 0 ");
+				var w:Array = sr.data as Array;
+				if(w.length > 0) {
+					for(var i:Number=0; i<w.length; i++) {
+						exportWords[i] = new Object();
+						
+						exportWords[i].id = w[i].id;										
+						exportWords[i].spelling = w[i].spelling;			
+						exportWords[i].order_number = w[i].order_number;		
+						exportWords[i].level = w[i].level;				
+						exportWords[i].familiarity = w[i].familiarity;				
+						exportWords[i].istraining = w[i].istraining;			
+						exportWords[i].photo_uri = w[i].photo_uri;				
+						exportWords[i].photo_comment = w[i].photo_comment;				
+						exportWords[i].count = w[i].count;				
+						exportWords[i].created = w[i].created;					
+						exportWords[i].modified = w[i].modified;					
+						exportWords[i].memo = date_fmt.format(new Date());
+
+						var wordDetailModel:WordDetail = new WordDetail();
+						var wd:Array = wordDetailModel.find({word_id: w[i].id});
+						exportWords[i].details = new Array();				
+						exportWords[i].details[0] = new Object();
+						if(wd && wd.length > 0) {
+							exportWords[i].details[0].wordclass = wd[0].wordclass;				
+							exportWords[i].details[0].meaning = wd[0].meaning;				
+							exportWords[i].details[0].example = wd[0].example;				
+							exportWords[i].details[0].definition = wd[0].definition;					
+							exportWords[i].details[0].relatedword = wd[0].relatedword;				
+							exportWords[i].details[0].yourproduction = wd[0].yourproduction;					
+						}else {
+							exportWords[i].details[0].wordclass ="";				
+							exportWords[i].details[0].meaning = "";				
+							exportWords[i].details[0].example = "";				
+							exportWords[i].details[0].definition = "";					
+							exportWords[i].details[0].relatedword = "";				
+							exportWords[i].details[0].yourproduction = "";					
+						}
+					}
+					
+					serverExportRequest();
+					CursorManager.setBusyCursor();
+				}
+			}
+
+			private function serverExportRequest(e:Event=null):void {
+				if(e != null) {
+					Application.application.serverUpdateWordRemoveListener(serverExportRequest, ioErrorHandler);
+				}
+				if(exportIndex < exportWords.length) {
+					Application.application.serverUpdateWord(exportWords[exportIndex], serverExportRequest, ioErrorHandler);
+					exportIndex++;
+				}else {
+					Alert.show("サーバに転送しました。");
+					CursorManager.removeBusyCursor();
+				}
+			}
+
+			public function dbExport():void {
+				
+				var root:File = File.documentsDirectory.resolvePath("lexinote_"+getDateString()+".db");
+				root.browseForSave("バックアップを保存する");
+				root.addEventListener(Event.SELECT, function(event:Event):void {
+				    var selectedFile:File = File(event.target);
+				    var targetFile:File = Application.application.myRepositoryPath.resolvePath("lexinote.db");
+					targetFile.copyTo(selectedFile, true);
+//					Alert.show("バックアップを「"+selectedFile.nativePath+"」に保存しました。","確認", Alert.OK);
+					Application.application.outputLog(0, "", "inputWin", "db", "export", selectedFile.nativePath);
+				}, false, 0, true);
+			}
+		]]>
+	</mx:Script>
+	<mx:Image x="101" y="4" source="@Embed('assets/database_export_16x16.gif')" buttonMode="true" click="clickExport()" toolTip="バックアップを保存する"   width="16" height="16"/>
+	<mx:Image x="77" y="4" source="@Embed('assets/database_import_16x16.gif')" buttonMode="true" click="clickImport()" toolTip="バックアップを読み込む"   width="16" height="16"/>
+	
+	<mx:XML id="toeicxml" source="com/lexinote/models/TOEIC_SVLNO.xml" />
+
+	<jx:AirAutoUpdater url="http://lexinote.com/AIR/version.xml"/>
+
+	<mx:Fade id="showEffect1" alphaFrom="0" alphaTo="1.0" duration="500" />
+	<mx:Fade id="hideEffect1" alphaFrom="1.0" alphaTo="0" duration="500" />
+	
+	<!--mx:filters> 
+	    <flash.filters:BevelFilter id='bevelFilter' xmlns:flash.filters='flash.filters.*' 
+	      	  angle='45'
+	          blurX='10' blurY='10'
+	          distance='4'
+	          highlightAlpha='0.5' highlightColor='#ffffff' 
+	          knockout='false' quality='1'
+	          shadowAlpha='0.3' shadowColor='#000000' strength='1' type='outer'/>
+	</mx:filters-->
+	
+	<mx:Canvas id="mainWin" x="0" y="0" width="375" height="111" showEffect="showEffect1" hideEffect="hideEffect1" horizontalScrollPolicy="off" verticalScrollPolicy="off">
+		<mx:Image x="351" y="6" source="@Embed('assets/fileclose.png')" click="myExit()" toolTip="終了" buttonMode="true"  width="16" height="16"/>
+		<!--mx:Image x="325" y="6" source="@Embed('assets/mini.png')" click="myMini()" toolTip="最小化" buttonMode="true" width="16" height="16"/-->
+		<mx:Image x="329" y="50" source="@Embed('assets/my_portfolio.png')" width="32" height="32" toolTip="ポートフォリオを見にいく" click="viewList(event)" buttonMode="true" />
+		<mx:Image x="285" y="50" source="@Embed('assets/kadai_wo_toriniiku.png')" width="32" height="32" toolTip="課題と成果を見にいく" click="viewFeed(event)" buttonMode="true"/>
+		<mx:TextInput id="keyword" x="18" y="51"
+			cornerRadius="2" borderStyle="solid" borderThickness="0" borderColor="#A9A9A6"
+			height="28" width="206" fontSize="18" paddingTop="0" paddingLeft="6"
+			toolTip=""
+			/>
+<!--
+		<mx:Image x="323.5" y="148" source="@Embed('assets/accessories_dictionary.png')" toolTip="情報を集めにいく" click="searchWord(event)" buttonMode="true" width="16" height="16"/>
+		<mx:Image x="298.5" y="148" source="@Embed('assets/report_add.png')" toolTip="ノートブックに記録する" click="editWord()" buttonMode="true" width="16" height="16"/>
+-->
+		<mx:Image x="239.5" y="50" source="@Embed('assets/jisho2.png')" toolTip="情報を集めにいく" click="searchWord(event)" buttonMode="true" width="32" height="32"/>
+		<!--mx:Image x="206.5" y="49" source="@Embed('assets/noto_ni_kirokusuru.png')" toolTip="ノートブックに記録する" click="editWord()" buttonMode="true" width="32" height="32"/-->
+		<!--mx:TextInput x="153" y="7" id="today" editable="false" borderStyle="none" backgroundAlpha="0.0" fontSize="13" textAlign="right" color="#7D7D7D" width="183" text="sss"/-->
+		<mx:TextInput x="12" y="88" id="completeCount" text="学習済み：12000　自己表現：12000" editable="false" borderStyle="none" backgroundAlpha="0.0" fontSize="13" textAlign="right" width="348" color="#826304"/>
+		<!--mx:TextInput x="235" y="92" id="allCount" text="総ｱｲﾃﾑ数：12000" editable="false" borderStyle="none" backgroundAlpha="0.0" fontSize="13" width="128" textAlign="right" color="#717171"/-->
+		<mx:VBox x="160.5" y="22" width="130" horizontalAlign="left">
+			<mx:VBox id="myNameBox" height="15" borderStyle="solid" borderColor="#000000" backgroundColor="#ff0000" click="clickNamePanel()">
+				<mx:Label id="myName" text="？？？" fontSize="10" textAlign="center" color="#000000" />
+			</mx:VBox>
+		</mx:VBox>
+		<mx:Image id="myLogo" source="@Embed('assets/lexinote_logo_135.png')" x="16" y="10" width="135" toolTip=""/>
+		<mx:Image x="327" y="6" source="@Embed('assets/file_save.png')" buttonMode="true" click="clickExport()" toolTip="バックアップを保存する"   width="16" height="16"/>
+		<mx:Image x="303" y="6" source="@Embed('assets/file_open.png')" buttonMode="true" click="clickImport()" toolTip="バックアップを読み込む"   width="16" height="16"/>
+			
+	</mx:Canvas> 
+	
+	<views:inputWindow id="inputWin" showEffect="showEffect1" hideEffect="hideEffect1" x="0" y="112" width="375"/>
+
+	<views:candidateWindow id="candidateWin"
+		 x="42" y="119" width="375" height="607" showEffect="showEffect1" hideEffect="hideEffect1"/>
+
+	<views:runWindow id="runWin" x="0" y="619" width="375" />
+
+	<utilities:ResizeViewstack id="myViewStack" x="376" y="0" width="901" height="728">
+		<views:feedWindow id="feedWin" x="383" y="0" width="100%" height="100%" creationComplete="myViewStack.visible=true"/>
+	
+		<!--views:shareWindow id="shareWin" x="383" y="0" width="100%" height="100%" creationComplete="myViewStack.visible=true"/-->
+		
+		<!--views:browserWindow id="browserWin" x="383" y="0" width="100%" height="100%" creationComplete="myViewStack.visible=true"/-->
+	
+		<views:listWindow id="listWin" x="383" y="0" width="100%" height="100%" creationComplete="myViewStack.visible=true"/>
+	
+	
+	</utilities:ResizeViewstack> 
+	<mx:HRule x="20" y="50" width="334" height="0" strokeColor="#898B8B"/>
+
+
+	
+</mx:WindowedApplication>

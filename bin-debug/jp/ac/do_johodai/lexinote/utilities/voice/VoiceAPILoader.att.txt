@@ -1,0 +1,157 @@
+package jp.ac.do_johodai.retriever.utilities.voice
+{
+	import flash.errors.IOError;
+	import flash.events.Event;
+	import flash.events.EventDispatcher;
+	import flash.events.IOErrorEvent;
+	import flash.events.SecurityErrorEvent;
+
+	import flash.filesystem.File;
+	import flash.filesystem.FileMode;
+	import flash.filesystem.FileStream;
+	import flash.net.URLLoader;
+	import flash.net.URLLoaderDataFormat;
+	import flash.net.URLRequest;
+	import flash.net.URLRequestMethod;
+	import flash.net.URLRequestHeader;
+	import flash.net.URLVariables;
+	import flash.utils.ByteArray;
+	import mx.controls.Alert;
+	
+	[Event(name="complete", type="flash.events.Event")]
+	
+	public class VoiceAPILoader extends EventDispatcher
+	{
+		private var urlVariables:URLVariables = new URLVariables();
+		private var urlRequest:URLRequest = new URLRequest("http://192.20.225.36/tts/cgi-bin/nph-talk");
+//		private var urlRequest:URLRequest = new URLRequest("http://translate.google.com/translate_tts");
+//		private var urlRequest:URLRequest = new URLRequest("http://polite.do-johodai.ac.jp/translate_tts");
+
+		private var urlLoader:URLLoader = new URLLoader();
+		private var myText:String = "";
+		public var data:ByteArray;  //e.target.data
+
+		
+		function VoiceAPILoader() {
+			urlVariables.voice = "crystal";
+			urlVariables.txt = "";
+			urlVariables.speakButton = "SPEAK";
+			
+			urlRequest.method = URLRequestMethod.POST;
+
+/*			
+			urlVariables.tl = "en";
+			urlVariables.q = "";
+*/			
+            var header:URLRequestHeader = new URLRequestHeader("Referer", "http://www2.research.att.com/~ttsweb/tts/demo.php");
+
+			urlRequest.method = URLRequestMethod.POST;
+
+
+			urlRequest.userAgent = "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; Trident/4.0; GTB6.5; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; OfficeLiveConnector.1.4; OfficeLivePatch.1.3; InfoPath.2)";
+			flash.net.URLRequestDefaults.userAgent = "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; Trident/4.0; GTB6.5; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; OfficeLiveConnector.1.4; OfficeLivePatch.1.3; InfoPath.2)";
+			urlRequest.data = urlVariables;
+	        urlRequest.requestHeaders.push(header);		
+	        //URLLoaderでWAVファイルをByteArrayに読み込む
+	        urlLoader.dataFormat = URLLoaderDataFormat.BINARY;
+		}
+		
+		public function getVoiceData(txt:String):void {
+			myText = txt;
+			if(isCache(txt)) {
+				var e:Event = new Event(Event.COMPLETE);
+				this.data = readCache(txt);
+				dispatchEvent(e);
+				return;
+			}
+			urlVariables.txt = txt;
+			urlLoader.load(urlRequest);
+			urlLoader.addEventListener(Event.COMPLETE, getVoiceDataCompleteHandler, false, 0, true);
+			urlLoader.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler, false, 0, true);   
+            urlLoader.addEventListener(SecurityErrorEvent.SECURITY_ERROR, ioErrorHandler, false, 0, true);
+		}
+		
+		private function getVoiceDataCompleteHandler(event:Event):void {
+			urlLoader.removeEventListener(Event.COMPLETE, getVoiceDataCompleteHandler);
+			urlLoader.removeEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler);   
+            urlLoader.removeEventListener(SecurityErrorEvent.SECURITY_ERROR, ioErrorHandler);
+			
+			writeCache(myText, event.target.data as ByteArray);
+			
+			this.data = event.target.data as ByteArray;
+			dispatchEvent(event);
+		}
+
+		private function ioErrorHandler(event:Event):void {
+			urlLoader.removeEventListener(Event.COMPLETE, getVoiceDataCompleteHandler);
+			urlLoader.removeEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler);   
+            urlLoader.removeEventListener(SecurityErrorEvent.SECURITY_ERROR, ioErrorHandler);
+			Alert.show("音声サービスにアクセスできませんでした。");
+		}
+		
+		private function getVoicePath():File {
+			var vrpath:File = File.userDirectory.resolvePath("VR");
+			if(!vrpath.exists) {
+				vrpath.createDirectory();
+			}
+			var voicepath:File = vrpath.resolvePath("voice");		
+			if(!voicepath.exists) {
+				voicepath.createDirectory();
+			}
+			return voicepath;
+		}
+
+		private function isCache(txt:String):Boolean {
+			var voicepath:File = getVoicePath();
+			var voicefile:File = voicepath.resolvePath(txt + ".wav");
+
+			if(!voicefile.exists || voicefile.size < 16000) {
+				return false;
+			}
+			return true;		
+		}
+
+		private function readCache(txt:String):ByteArray {
+			var ret:ByteArray = new ByteArray();
+			
+			var voicepath:File = getVoicePath();
+			var voicefile:File = voicepath.resolvePath(txt + ".wav");
+			if(!voicefile.exists) {
+				return ret;
+			}
+			
+			var stream:FileStream = new FileStream();
+	        try {
+				stream.open(voicefile, FileMode.READ);
+				stream.readBytes(ret);
+	        } catch (error:IOError) {
+				trace(error.message);
+	        } finally {
+				stream.close();
+	        }
+	        
+	        return ret;
+		}
+
+		private function writeCache(txt:String, data:ByteArray):Boolean {
+			var voicepath:File = getVoicePath();
+			var voicefile:File = voicepath.resolvePath(txt + ".wav");
+			if(voicefile.exists) {
+				return false;
+			}
+
+			var stream:FileStream = new FileStream();
+	        try {
+				stream.open(voicefile, FileMode.WRITE);
+				stream.writeBytes(data);
+	        } catch (error:IOError) {
+				trace(error.message);
+				return false;
+	        } finally {
+				stream.close();
+	        }
+			
+			return true;
+		}
+	}
+}

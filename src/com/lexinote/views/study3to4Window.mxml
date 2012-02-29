@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml"
+	xmlns:views="com.lexinote.views.*"
+	
+	creationComplete="init()"
+	hide="close()"
+	>
+	<mx:Image x="{this.width-30}" y="4" source="@Embed('assets/close.png')" click="this.visible=false" toolTip="閉じる" buttonMode="true"/>
+
+	<mx:Script>
+		<![CDATA[
+			import mx.core.Application;
+			import mx.events.CloseEvent;
+			import com.lexinote.models.Word;
+			import com.lexinote.utilities.ExArray;
+			
+			private var _wordModel:Word;
+			private var _currentArray:Array;
+			private var _correct:Array;
+			private var _type:Number;
+			private var _idx:Number;
+
+			private function init():void {
+				_correct = new Array();
+				_wordModel = new Word();
+//				var result:SQLResult = _wordModel.query("select *, case when meaning is NULL or meaning='' then standard_meaning else meaning end as xmeaning from Words left join WordDetails on Words.id=WordDetails.word_id where istraining=1 and familiarity=3");		
+				var result:SQLResult = _wordModel.query("select *, case when meaning is NULL or meaning='' then standard_meaning else meaning end as xmeaning from Words left join WordDetails on Words.id=WordDetails.word_id where istraining=1 and familiarity=3 and example<>''");		
+				_currentArray = ExArray.shuffle(result.data);
+				_idx = 0;
+				play();
+			}
+			private function play():void {
+				this.currentState = "qtype_b2";
+				b2.init(_currentArray[_idx]);
+			}
+			public function correctWord(word:Object):void {
+				var key:Number = word.id;
+				if(!_correct[key]) {
+					_correct[key] = word;
+					_correct[key].correct = 1;
+				}else {
+					_correct[key].correct++;
+				}
+			}
+
+			public function nextWord():void {
+				_idx++;
+				if(_currentArray.length <= _idx) {
+					checkAll();
+					return;
+				}
+				play();
+			}
+			
+			private function checkAll():void {
+				var s:Array = new Array();
+				for each ( var w:Object in _correct ) {
+					if(w.correct >= 1) {
+						s[s.length] = w;
+						w.familiarity++;
+						_wordModel.update({id:w.id}, {
+							familiarity: w.familiarity
+						});
+						Application.application.serverUpdateWord(w);
+						Application.application.outputLog(w.id, w.spelling, "study", "3to4", "correct", String(w.familiarity));
+					}else {
+						Application.application.outputLog(w.id, w.spelling, "study", "3to4", "incorrect", String(w.familiarity));
+					}
+				}
+				//mx.controls.Alert.show(s.join(', '));
+				this.currentState = "result";
+				aresult.init(s);
+			}
+			
+			private function close():void {
+				dispatchEvent(new CloseEvent(CloseEvent.CLOSE));
+			}			
+		]]>
+	</mx:Script>
+	
+	<mx:Button x="10" y="10" label="学習を中断する" height="32" click="this.visible=false" buttonMode="true" />
+
+   <mx:transitions>
+        <mx:Transition id="myTransition1" fromState="*" toState="qtype_b2">
+            <mx:Parallel id="t1" targets="{[b2]}">
+                <mx:Move duration="500" xFrom="{-b2.width}" yFrom="{b2.y}" />
+            </mx:Parallel>
+        </mx:Transition>
+        <mx:Transition id="myTransition4" fromState="*" toState="result">
+            <mx:Parallel id="t4" targets="{[aresult]}">
+                <mx:Move duration="500" xFrom="{-aresult.width}" yFrom="{aresult.y}" />
+            </mx:Parallel>
+        </mx:Transition>
+    </mx:transitions>
+	
+	
+	<mx:states>
+		<mx:State name="qtype_b2">
+			<mx:AddChild position="lastChild">
+				<views:study3_1 id="b2" width="600" height="650" borderStyle="solid" borderThickness="2" cornerRadius="10" horizontalCenter="0" y="50" />
+			</mx:AddChild>
+		</mx:State>
+		<mx:State name="result">
+			<mx:AddChild position="lastChild">
+				<views:study2_result id="aresult" width="600" height="650" borderStyle="solid" borderThickness="2" cornerRadius="10" horizontalCenter="0" y="50" />
+			</mx:AddChild>
+		</mx:State>
+	</mx:states>
+
+</mx:Canvas>

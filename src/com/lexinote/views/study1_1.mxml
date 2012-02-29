@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Panel xmlns:mx="http://www.adobe.com/2006/mxml"
+	xmlns:utilities="com.lexinote.utilities.*"
+	width="100%" height="100%" horizontalAlign="center" layout="absolute" currentState="stateYesNo" verticalScrollPolicy="off">
+	<mx:Script>
+		<![CDATA[
+			import mx.controls.Alert;
+			import com.lexinote.utilities.voice.VoiceAPILoader;	
+			import com.lexinote.utilities.voice.VoicePlayer;
+			import mx.managers.CursorManager;
+			private var _vapi:VoiceAPILoader;
+
+			private var _word:Object;
+			
+			public function init(word:Object):void {
+				_word = word;
+				spelling.text = _word.spelling;				
+				meaning.text = _word.xmeaning;
+
+				sound.visible = false;
+				meaning.visible = false;
+				this.currentState = "stateYesNo";				
+			}
+			
+			private function judge(yesno:Boolean):void {
+				sound.visible = true;
+				callLater(voicePlay, [_word.spelling]);
+				meaning.visible = true;
+
+				if(yesno == true) {
+					this.currentState = "stateYes";
+				}else {
+					this.currentState = "stateNo";
+				}
+			}
+
+			private function retry():void {
+				parentDocument.nextWord();
+			}
+
+			private function goNext(okng:Boolean):void {
+				if(okng == true) {
+					parentDocument.correctWord(_word);
+				}
+				parentDocument.nextWord();
+			}
+			
+			private function voicePlay(txt:String):void {
+				if(txt.replace(" ", "") == "") {
+					return;
+				}
+				_vapi = new VoiceAPILoader();
+				_vapi.addEventListener(Event.COMPLETE, handleVoicePlay, false, 0, true);
+				_vapi.getVoiceData(txt);
+			}
+			
+			private function handleVoicePlay(event:Event):void 
+			{
+				CursorManager.removeBusyCursor();
+
+//		        var vp:VoicePlayer = new VoicePlayer();
+//		        vp.play(_vapi.data );
+			}
+			
+			private function dummy():void {
+				/* 	なぜかこれがなければボタンが表示されず */
+			}
+		]]>
+	</mx:Script>
+	<mx:Label text="この意味を知ってますか？" fontSize="23" horizontalCenter="0" x="101" y="66" color="#682406"/>
+	<mx:Label y="120" fontSize="44" horizontalCenter="0" id="spelling" x="236" color="#047A26"/>
+	<mx:Image id="sound" source="@Embed('assets/sound.png')" y="170" visible="false" click="voicePlay(spelling.text)" horizontalCenter="0" width="64" height="64" x="208" buttonMode="true"/>
+	<mx:Label y="277" fontSize="30" color="#2323F2" horizontalCenter="0" id="meaning" x="220" width="{this.width-30}" textAlign="center" toolTip="{meaning.text}"/>
+
+
+    <mx:transitions>
+        <mx:Transition id="myTransition1" fromState="*" toState="stateYesNo">
+            <mx:Parallel id="t1" targets="{[btnYES, btnNO]}">
+                <mx:Fade duration="500" alphaFrom="0" />
+                <mx:Move duration="500" yFrom="{this.height+btnYES.height}" />
+            </mx:Parallel>
+        </mx:Transition>
+        <mx:Transition id="myTransition2" fromState="*" toState="stateYes">
+            <mx:Parallel id="t2" targets="{[btnRetry,btnYesNext]}">
+                <mx:Move duration="500" yFrom="{this.height+btnRetry.height}" />
+            </mx:Parallel>
+        </mx:Transition>
+        <mx:Transition id="myTransition3" fromState="*" toState="stateNo">
+            <mx:Parallel id="t3" targets="{[btnNoNext]}">
+                <mx:Move duration="500" xFrom="{-btnNoNext.width}" />
+            </mx:Parallel>
+        </mx:Transition>
+    </mx:transitions>
+
+
+	<mx:states>
+		<mx:State name="stateYesNo" enterState="btnYES.setFocus()">
+			<mx:AddChild position="lastChild">
+				<utilities:EnterButton id="btnYES" x="134" y="400" label="YES" width="123" height="90" fontSize="30" color="#065465" click="judge(true)" buttonMode="true"/>
+			</mx:AddChild>
+			<mx:AddChild position="lastChild">
+				<utilities:EnterButton id="btnNO" x="323" y="400" label="NO" width="123" height="90" fontSize="30" color="#C2320B" click="judge(false)" buttonMode="true"/>
+			</mx:AddChild>
+		</mx:State>
+		<mx:State name="stateYes" enterState="btnYesNext.setFocus()">
+			<mx:AddChild position="lastChild">
+				<utilities:EnterButton id="btnRetry" x="60" y="400" label="後でやり直し" width="222" height="90" fontSize="30" color="#C2320B" click="retry()" buttonMode="true"/>
+			</mx:AddChild>
+			<mx:AddChild position="lastChild">
+				<utilities:EnterButton id="btnYesNext" x="298" y="400" label="次の語へ" width="222" height="90" fontSize="30" color="#065465"  click="goNext(true)" buttonMode="true" />
+			</mx:AddChild>
+		</mx:State>
+		<mx:State name="stateNo" enterState="btnNoNext.setFocus()">
+			<mx:AddChild position="lastChild">
+				<utilities:EnterButton id="btnNoNext" y="400" label="次の語へ" width="222" height="90" fontSize="30" color="#065465"  click="goNext(false)" buttonMode="true" x="187"/>
+			</mx:AddChild>
+		</mx:State>
+	</mx:states>
+</mx:Panel>

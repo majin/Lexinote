@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<utilities:ResizeCanvas xmlns:mx="http://www.adobe.com/2006/mxml"
+	xmlns:utilities="com.lexinote.utilities.*"
+	xmlns:photoviewer="com.lexinote.utilities.photoviewer.*"
+	horizontalScrollPolicy="off" verticalScrollPolicy="off"
+	creationComplete="creationComplete()"
+	>
+
+	<mx:Image x="{this.width-30}" y="4" source="@Embed('assets/close.png')" click="this.visible=false" toolTip="閉じる" buttonMode="true"  />
+
+	<mx:Script>
+		<![CDATA[
+		    import mx.core.Application;
+		    import mx.core.Container;
+		    
+            import mx.core.UIComponent;
+
+			import mx.events.CloseEvent;
+			import mx.managers.CursorManager;
+			import mx.managers.PopUpManager;
+			
+			private var _isCreationCompleted:Boolean = false;
+			private var _defaultKeyword:String = "";
+			private var _defaultImage:Image = null;
+			private var target:FileReference;
+			public var imageUrl:String;
+			
+			public var selectPhoto:FlickrPhoto;
+			public var selectedPhoto:FlickrPhoto;
+			
+			public function set defaultKeyword(txt:String):void {
+				_defaultKeyword = txt;
+				if(_isCreationCompleted) {
+					searchText.text = _defaultKeyword;
+					clickSearchButtonHandler();
+				}
+			}
+			public function set defaultImage(img:Image):void {
+				_defaultImage = img;
+				if(_isCreationCompleted) {
+					photoImage.source = _defaultImage.source;
+					comment.text = _defaultImage.toolTip;
+				}
+			}
+			
+			private function creationComplete():void
+			{
+				
+				this.stage.addEventListener(KeyboardEvent.KEY_DOWN, function (event:KeyboardEvent):void
+				{
+					// ESCAPEキーを押すと閉じる
+					if (event.keyCode == Keyboard.ESCAPE)
+						dispatchEvent(new CloseEvent(CloseEvent.CLOSE));
+				}, false, 0, true);
+				if(_defaultKeyword != "") {
+					searchText.text = _defaultKeyword;
+					clickSearchButtonHandler();
+				}
+				if(_defaultImage != null) {
+					photoImage.source = _defaultImage.source;
+					comment.text = _defaultImage.toolTip;
+				}
+				
+				_isCreationCompleted = true;
+			}
+			
+			/**
+			 * 検索ボタンがクリックされた際のイベントハンドラ。
+			 * 
+			 */
+			public function clickSearchButtonHandler(event:Event=null):void {
+				// 画像決定ボタンを無効にする
+           		//selectItemButton.enabled = false;
+           		// 検索する
+				FlickrPhotoFeeds.searchPhoto(searchText.text);
+			}
+			
+	     	private function customizedContextMenu():ContextMenu {
+	     		// add "Save image..." to right-click context menu
+    			var customContextMenu:ContextMenu = new ContextMenu();
+    			var saveImage:ContextMenuItem = new ContextMenuItem("Save image...")
+    			saveImage.addEventListener(ContextMenuEvent.MENU_ITEM_SELECT, doSaveImageCommand, false, 0, true);
+    			customContextMenu.customItems.push(saveImage);
+    			return customContextMenu
+			}
+
+			private function doSaveImageCommand(event:ContextMenuEvent):void {
+				// save image
+				if (imageUrl != null) {
+					var fullSizeImage:URLRequest = new URLRequest(imageUrl);
+					target = new FileReference();
+					target.download(fullSizeImage);
+				}
+			}
+            
+            /**
+             * 画像をダブルクリックした際に呼び出されるイベントハンドラ。
+             * 
+             */
+            private function doubleClickItemHandler(event:Event):void { 
+            	var selectedItem:FlickrPhoto = event.currentTarget.selectedItem as FlickrPhoto;
+            	
+				// show full-sized image in popup when thumbnail clicked
+                var customPopup:FlickrPhotoViewWindow = FlickrPhotoViewWindow(PopUpManager.createPopUp(this, FlickrPhotoViewWindow, true));
+                imageUrl = selectedItem.content.url;
+                
+				customPopup.contextMenu = customizedContextMenu();	 // add 'Save image' context menu option			
+                //customPopup.title=event.currentTarget.selectedItem.credit;              
+                customPopup.title = event.currentTarget.selectedItem.title;              
+                customPopup.showCloseButton = true;
+                customPopup.maxImageHeight = this.height - 150;  // set max height from browser window
+                customPopup.maxImageWidth = this.width - 300;  // set max width from browser window
+                customPopup.originalImageHeight = event.currentTarget.selectedItem.content.height;
+                customPopup.originalImageWidth = event.currentTarget.selectedItem.content.width;
+      			customPopup.fullImage.source = imageUrl;  // set full-sized image source (url)
+      			CursorManager.setBusyCursor();  // show busy cursor
+            }
+            
+            /**
+             * 画像を(シングル)クリックされた際に呼び出されるイベントハンドラ。
+             * 
+             */
+            private var _loader:Loader;
+            private function clickItemHandler(event:Event):void {
+            	var selectedItem:FlickrPhoto = event.target.selectedItem;
+            	if (selectedItem != null) {
+            		// 画像決定ボタンを有効にする
+            		//selectItemButton.enabled = true;
+            		// URLを取り出す
+            		//this.imageUrl = selectedItem.content.url;
+            		this.imageUrl = selectedItem.thumbnail.url;
+            		
+            		
+            		this.selectPhoto = selectedItem;
+            		
+					//アイテムレンダラ内の num に setFocus
+					var cont:Container = flickrPhotoList.itemToItemRenderer(selectedItem) as Container;
+					if(cont){
+						var comp:UIComponent = cont.getChildByName("thumbimg") as UIComponent;
+	                    if(comp){
+	                    	photoImage.source = (comp as Image).source;
+	                    }
+	                }
+            		
+            	} else {
+            		//selectItemButton.enabled = false;
+            	}
+            }
+            
+			private function bytesLoaded(event:Event):void{
+				photoImage.source = _loader;
+			}
+
+            /**
+             * 画像選択ボタンがクリックされた際に呼び出されるイベントハンドラ。
+             * 
+             */ 
+            private function selectItemButtonHandler(event:MouseEvent):void {
+            	this.selectedPhoto = flickrPhotoList.selectedItem as FlickrPhoto;
+            	if (this.selectedPhoto == null) {
+            		// 未選択でボタンが押された（押せた）時は、ボタンを使用できなくする
+            		//selectItemButton.enabled = false;
+            	} else {
+            		// CloseEventをdispatchする
+            		//dispatchEvent(new Event(Event.SELECT));
+            	}
+           		dispatchEvent(new Event(Event.SELECT));
+            }
+		]]>
+	</mx:Script>
+
+	<mx:HBox x="10" y="18" verticalAlign="middle"  >
+		<mx:TextInput id="searchText" enter="clickSearchButtonHandler(event)" cornerRadius="7" paddingLeft="6" borderStyle="solid" borderThickness="0" borderColor="#A9A9A6" />
+		<mx:Image click="clickSearchButtonHandler(event)" buttonMode="true" source="@Embed('assets/search.png')" toolTip="検索する"/>
+	</mx:HBox>
+	
+	<mx:TileList width="{this.width-25}" height="{this.height-60-footer.height}"  cornerRadius="7" borderStyle="solid" borderThickness="0" borderColor="#A9A9A6" 
+		id="flickrPhotoList"
+		dataProvider="{FlickrPhotoFeeds.photoFeeds}"
+		itemClick="clickItemHandler(event)"
+		itemDoubleClick="doubleClickItemHandler(event)"
+		doubleClickEnabled="true" x="10" y="54"  >
+		<mx:itemRenderer>
+			<mx:Component>
+				<photoviewer:FlickrThumbnail buttonMode="true" />
+			</mx:Component>
+		</mx:itemRenderer>
+	</mx:TileList>
+
+	<mx:HBox id="footer" x="10" y="{this.height-footer.height}" width="{this.width-25}" height="120" verticalAlign="middle">
+		<mx:VBox  width="75" height="75" borderColor="#cccccc" borderStyle="solid" borderThickness="4" cornerRadius="7" horizontalScrollPolicy="off" verticalScrollPolicy="off">
+			<mx:Image id="photoImage" width="75" height="75" source="@Embed('assets/folder_images.png')" />
+		</mx:VBox>
+		<mx:VBox width="300" height="100" horizontalScrollPolicy="off">
+			<mx:Label text="一言コメント" color="#333333"/>
+			<mx:TextArea id="comment" width="100%" height="55" cornerRadius="7" paddingLeft="6" borderStyle="solid" borderThickness="0" borderColor="#A9A9A6"  />
+		</mx:VBox>
+		<mx:Button id="selectItemButton" label="この画像を選択する"
+			click="selectItemButtonHandler(event)"  x="10" y="{this.height-40}" icon="@Embed('assets/camera_test.png')" cornerRadius="7" paddingLeft="6" borderColor="#A9A9A6"  />
+	</mx:HBox>
+</utilities:ResizeCanvas>

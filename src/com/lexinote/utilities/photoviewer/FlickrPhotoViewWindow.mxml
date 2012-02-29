@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow
+	xmlns:mx="http://www.adobe.com/2006/mxml"
+	showCloseButton="true"
+	close="PopUpManager.removePopUp(this);CursorManager.removeBusyCursor();"
+	title="Title"
+	borderColor="#6FA9E0"
+	borderAlpha="0.8">
+	
+	<mx:Script>
+	<![CDATA[
+		import mx.managers.PopUpManager;
+		import mx.controls.Alert;
+		import mx.managers.CursorManager;
+		
+		public var originalImageHeight:Number;
+		public var originalImageWidth:Number;
+				
+		[Bindable]
+		public var maxImageHeight:Number;
+		
+		[Bindable]
+		public var maxImageWidth:Number;
+				
+		private function imageLoading():void {
+			// resize image if too wide
+			if (originalImageWidth >= maxImageWidth && originalImageWidth >= originalImageHeight) {
+				// large landscape image -- resize
+				fullImage.width = maxImageWidth;
+				fullImage.height = (originalImageHeight * maxImageWidth) / originalImageWidth;
+			}
+			// resize image if too tall
+			else if (originalImageHeight >= maxImageHeight) {
+				// large portrait image -- resize
+				fullImage.height = maxImageHeight;
+				fullImage.width = (originalImageWidth * maxImageHeight) / originalImageHeight;
+			}	
+			// center popup image	
+			PopUpManager.centerPopUp(this);
+		}
+		
+		private function imageLoaded():void {
+			// change 'busy' cursor to 'normal' arrow
+			CursorManager.removeBusyCursor();
+		}
+		
+	]]>
+	</mx:Script>
+
+	<mx:VBox width="100%" verticalCenter="0"> 
+
+		<!-- Full-sized image (aspect ratio manually resized, if necessary) -->
+		<mx:Image id="fullImage" maintainAspectRatio="false" maxWidth="{maxImageWidth}" maxHeight="{maxImageHeight}" 
+			minHeight="75" minWidth="75" creationComplete="imageLoading()" complete="imageLoaded()" />
+
+	</mx:VBox>
+
+</mx:TitleWindow>

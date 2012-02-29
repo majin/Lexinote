@@ -1,0 +1,138 @@
+/* CSS file */
+/* 
+        @font-face {
+            src                  : local("MS UI Gothic");
+            fontFamily           : advancedAntiAliasingTrue;
+            advancedAntiAliasing : true;
+        }
+*/
+        @font-face {
+            src                  : local("MS UI Gothic");
+            fontFamily           : advancedAntiAliasingFalse;
+            advancedAntiAliasing : true;
+        }
+
+global {
+	fontSize: 14px; 
+/*	fontFamily: "ＭＳ ゴシック",Osaka－等幅;*/
+
+	fontFamily: advancedAntiAliasingFalse;
+
+    modalTransparencyBlur: 4;
+    modalTransparency: 0;
+}
+
+HorizontalList {
+	horizontalScrollPolicy: off;
+	verticalScrollPolicy: off;
+	backgroundColor: #999966;
+}
+DataGrid {
+	fontSize: 14px;
+}
+
+TextInput {
+	fontSize: 14px;
+	color: #000000;
+	dropShadowEnabled: true;
+	shadowDirection: right;
+	dropShadowColor: #333333;
+   	shadowDistance: 1;
+	borderStyle: solid;
+	borderThickness: 1;
+	borderColor: #aaaaaa;
+}
+TextArea {
+	fontSize: 14px;
+	color: #000000;
+	dropShadowEnabled: true;
+	shadowDirection: right;
+	dropShadowColor: #333333;
+   	shadowDistance: 1;
+	borderStyle: solid;
+	borderThickness: 2;
+	borderColor: #333333;
+}
+		
+ToolTip{
+	fontSize: 14px;
+	backgroundColor: #ccffcc;
+}
+
+Alert {
+	color: #000000;
+	backgroundColor: #ffffff;
+	borderStyle: solid;
+	borderThickness: 2;
+	borderColor: #5A5A3D;
+   
+	titleStyleName: "alertTitle";
+	messageStyleName: "alertMessage";
+	buttonStyleName: "alertButton";
+	
+	dropShadowEnabled: true;
+	shadowDirection: right;
+/*	shadowColor: #ccccccc; */
+   	shadowDistance: 2;
+
+}
+/* Title部 */
+.alertTitle {
+    letterSpacing: 0;
+    fontSize: 14;
+    color: black;
+    fontWeight: bold;
+    backgroundColor: #ffcccc;
+    textAlign: center;
+}
+/* Message部 */
+.alertMessage {
+    letterSpacing: 0;
+    fontSize: 14;
+    fontWeight: bold;
+    color: black;
+}
+/* Button部 */
+.alertButton {
+	letterSpacing: 0;
+	fontSize: 14;
+	cornerRadius: 3;
+	fontWeight: normal;
+	color: #000000;
+	width: 200;
+}
+
+Button {
+	fontFamily: advancedAntiAliasingFalse;
+}
+
+Canvas {
+	borderStyle: solid;
+	borderThickness: 1;
+	borderColor: #999999;
+	cornerRadius: 2;
+    highlightAlphas: 1, 1;
+	backgroundColor: #EFEFDE;
+	backgroundAlpha: 99;
+	horizontalScrollPolicy: off;
+	paddingLeft: 0;
+	
+	dropShadowEnabled: true;
+	shadowDirection: right;
+	dropShadowColor: #000000;
+   	shadowDistance: 1;
+
+
+/*	dropShadowEnabled: true;
+	shadowDirection: right;
+	dropShadowColor: #ffffff;
+   	shadowDistance: 1;
+ */
+}
+
+Label {
+	dropShadowEnabled: true;
+	shadowDirection: right;
+	dropShadowColor: #000000;
+   	shadowDistance: 1;
+}

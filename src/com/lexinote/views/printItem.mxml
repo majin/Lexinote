@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" width="544" height="270"
+	xmlns:ic="net.threeonec.imagecache.*" 
+	verticalScrollPolicy="off" horizontalScrollPolicy="off" dropShadowEnabled="false"
+	xmlns:Rating="com.Rating.*" backgroundColor="#FFFFFF" creationComplete="init()">
+	<mx:Script>
+		<![CDATA[
+			[Bindable]
+			private var _wordclassList:Array = [
+				{ c: "n" , label: "[名]" },
+				{ c: "v" , label: "[動]" },
+				{ c: "adj" , label: "[形]" },
+				{ c: "adv" , label: "[副]" },
+				{ c: "other" , label: "[他]" },
+				{ c: "unknown" , label: "？？" }
+			];
+
+			private function init():void {
+				photoImage.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler, false, 0, true)	;
+//				photoImage.source = data.photo_uri==null?'http://polite.do-johodai.ac.jp/~hiulms/lexinote/blank.png':data.photo_uri; 
+			}
+			private function ioErrorHandler(e:Event):void {
+			}
+			private function getWordclassIndices(d:String):String {
+				var ret:Array = new Array();
+				var wc:Array = d.split(",");
+				for(var i:Number=0; i<wc.length; i++) {
+					for(var j:Number=0; j<_wordclassList.length; j++) {
+						if(_wordclassList[j].c == wc[i]) {
+							ret.push(_wordclassList[j].label);
+						}
+					}
+				}
+				return ret.join(",");
+			} 
+		]]>
+	</mx:Script>	
+	<mx:TextInput x="0" y="0" borderColor="#000000" backgroundColor="#999999" width="100%" color="#FFFFFF" text="{data.spelling}" textAlign="left"/>
+	<Rating:Ratings id="inputFamiliarity" points="5" width="70" height="20" mouseChildren="false" value="{data.familiarity}" x="464" y="4"/>
+	<mx:Label text="品詞" id="headerWordclass" color="#000000" width="34" textAlign="right"  x="84.95" y="27"/>
+	<mx:Label text="{getWordclassIndices(data.wordclass)}" id="textWordclass" color="#000000" textAlign="right"  x="126.95" y="27" />
+	<mx:Label text="意味" id="headerMeaning" color="#000000" width="34" textAlign="right"  x="84.95" y="51.6"/>
+	<mx:TextArea id="textMeaning" text="{data.xmeaning}" width="406" cornerRadius="0" paddingLeft="6" borderStyle="solid" borderThickness="1" borderColor="#A9A9A6" x="126.95" y="49.6" height="48" color="#000000" textAlign="left"/>
+	<mx:Label text="例文" id="headerExample" color="#000000" width="65" textAlign="right"  x="0.9" y="108.6"/>
+	<mx:TextArea id="textExample" text="{data.example}" width="460" cornerRadius="0" paddingLeft="6" borderStyle="solid" borderThickness="1" borderColor="#A9A9A6"  x="73" y="107.55" height="43.939392" color="#000000" textAlign="left"/>
+	<mx:Label text="定義" id="headerDefinition" color="#000000" width="65" textAlign="right"  x="0.9" y="151.6"/>
+	<mx:TextArea id="textDefinition" text="{data.definition}" width="460" cornerRadius="0" paddingLeft="6" borderStyle="solid" borderThickness="1" borderColor="#A9A9A6"  x="73" y="150.55" height="24" color="#000000" textAlign="left"/>
+	<mx:Label text="関連語" id="headerRelatedword" color="#000000" width="65" textAlign="right"  x="0.9" y="176.6"/>
+	<mx:TextArea id="textRelatedword" text="{data.relatedword}" width="460" cornerRadius="0" paddingLeft="6" borderStyle="solid" borderThickness="1" borderColor="#A9A9A6"  x="73" y="173.6" height="24" color="#000000" textAlign="left"/>
+	<mx:Label text="自己表現" id="headerYourproduction" color="#000000" width="65" textAlign="right"  x="1" y="203"/>
+	<mx:TextArea id="textYourproduction" text="{data.yourproduction}" width="460" cornerRadius="0" paddingLeft="6" borderStyle="solid" borderThickness="1" borderColor="#A9A9A6"  x="73" y="197" height="65" textAlign="left"/>
+	<ic:CacheableImage id="photoImage" width="75" height="75"  cacheAsBitmap="true" cachePolicy="on" x="4" y="26" />
+	<mx:VBox  x="2" y="24" width="79" height="79" borderColor="#cccccc" borderStyle="solid" borderThickness="4" cornerRadius="7" horizontalScrollPolicy="off" verticalScrollPolicy="off">
+	</mx:VBox>
+</mx:Canvas>

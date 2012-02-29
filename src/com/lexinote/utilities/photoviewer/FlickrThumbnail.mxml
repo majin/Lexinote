@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+// ADOBE SYSTEMS INCORPORATED
+// Copyright 2007 Adobe Systems Incorporated
+// All Rights Reserved.
+//
+// NOTICE:  Adobe permits you to use, modify, and distribute this file in accordance with the 
+// terms of the Adobe license agreement accompanying it.  If you have received this file from a 
+// source other than Adobe, then your use, modification, or distribution of it requires the prior 
+// written permission of Adobe.
+////////////////////////////////////////////////////////////////////////////////
+-->
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" 
+	width="125" height="125"
+	horizontalAlign="center"
+	horizontalScrollPolicy="off" verticalScrollPolicy="off"
+	paddingBottom="5" paddingLeft="5" paddingRight="5" paddingTop="5">
+	
+	<!-- image thumbnail -->
+		<mx:Image id="thumbimg" width="75" height="75" source="{data.thumbnail.url}" />
+	
+	<!-- thumbnail caption -->
+		<mx:Text text="{data.title}" />
+	
+</mx:VBox>
+

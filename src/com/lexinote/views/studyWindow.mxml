@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Panel xmlns:mx="http://www.adobe.com/2006/mxml"
+	xmlns:utilities="com.lexinote.utilities.*"
+	layout="absolute"
+	creationComplete="init()"
+	title="学習メニュー"
+	themeColor="#ffffff"
+	>
+	<mx:Script>
+		<![CDATA[
+			import mx.core.Application;
+			import mx.containers.Canvas;
+			import mx.controls.Alert;
+			import mx.managers.PopUpManager;
+			import mx.managers.PopUpManagerChildList;
+			import mx.events.CloseEvent;
+			import com.lexinote.utilities.LemmaManager;
+			import com.lexinote.utilities.EnterButton;
+			import com.lexinote.models.Word;
+			import com.lexinote.views.listWindow;
+            import flash.media.*; 
+
+            [Embed(source="assets/sound/dog2_1.mp3")]
+            [Bindable]
+            public var sndCls:Class;
+            public var snd:Sound = new sndCls() as Sound; 
+			
+			public var _creationComplete:Boolean = false;
+			private var _wordModel:Word;
+			
+			public function init():void {
+				_wordModel = new Word();
+				var result:SQLResult;
+				var enableBtn:EnterButton = null;
+				var currentBtn:EnterButton = null;
+				for(var i:Number=1; i<5; i++) {
+					switch(i) {
+						case 1:	currentBtn = btn1to2; break;				
+						case 2:	currentBtn = btn2to3; break;				
+						case 3:	currentBtn = btn3to4; break;					
+						case 4:	currentBtn = btn4to5; break;					
+					}
+
+					result = _wordModel.query("select * from Words where istraining=1 and familiarity=" + i +" limit 1");
+ 
+					if(result.data == null) {
+						currentBtn.enabled = false;
+ 						currentBtn.setStyle("fillColors", [0xcccccc,0xcccccc]);
+ 					}else {
+						currentBtn.enabled = true;
+						currentBtn.setStyle("fillColors", [0xcccc00,0xffff00]);
+						currentBtn.setStyle("highlightAlphas", [0.62, 0.8]);
+						if(enableBtn == null) {
+							enableBtn = currentBtn;
+							enableBtn.setFocus();
+						}
+					}
+				
+				}
+				_creationComplete = true;	
+			}
+
+			private function setWindowPosition(w:Canvas):void {
+				var p:Sprite = this.parent.parent.parent as Sprite;
+				w.move(p.x, p.y);
+				w.width = p.width;
+				w.height = p.height;				
+			}
+
+			private function checkStart1to2():void {
+				if(this.parentApplication.isSaveCheck()) {
+					this.parentApplication.editWord(null);
+					return;
+				}
+				var result:SQLResult = _wordModel.query("select * from Words left join WordDetails on Words.id=WordDetails.word_id where istraining=1 and familiarity=1 and meaning<>'' limit 1");
+				if(result.data != null) {
+					Application.application.outputLog(0, "", "study", "checkStart1to2", "", "");
+	
+					var _study1to2Win:study1to2Window = study1to2Window(
+						PopUpManager.createPopUp(this, study1to2Window, true, PopUpManagerChildList.POPUP));
+					_study1to2Win.addEventListener(CloseEvent.CLOSE, study1to2WindowCloseHandler, false, 0, true);
+					
+					setWindowPosition(_study1to2Win);
+				}else {
+					study1to2WindowCloseHandler(null);
+				}
+			}
+
+			private function study1to2WindowCloseHandler(e:CloseEvent):void {
+				init();
+				this.parentApplication.updateNotifty();
+//				(this.parent.parent as listWindow).init();
+
+				var result:SQLResult = _wordModel.query("select * from Words left join WordDetails on Words.id=WordDetails.word_id where istraining=1 and familiarity=1 and meaning='' limit 1");
+				if(result.data != null) {
+					Alert.show(result.data[0].spelling+" の意味を確定しましょう。","確認",Alert.OK,this);
+					snd.play();
+
+					this.parentApplication.selectWord(result.data[0].spelling);
+					return;
+				}
+
+			}
+
+
+			private function checkStart2to3():void {
+				if(this.parentApplication.isSaveCheck()) {
+					this.parentApplication.editWord(null);
+					return;
+				}
+				Application.application.outputLog(0, "", "study", "checkStart2to3", "", "");
+
+				var _study2to3Win:study2to3Window = study2to3Window(
+					PopUpManager.createPopUp(this, study2to3Window, true, PopUpManagerChildList.POPUP));
+				_study2to3Win.addEventListener(CloseEvent.CLOSE, study2to3WindowCloseHandler, false, 0, true);
+				setWindowPosition(_study2to3Win);
+			}
+
+			private function study2to3WindowCloseHandler(e:CloseEvent):void {
+				init();
+				this.parentApplication.updateNotifty();
+//				(this.parent.parent as listWindow).init();
+
+			}
+
+			
+			private function checkStart3to4():void {
+				if(this.parentApplication.isSaveCheck()) {
+					this.parentApplication.editWord(null);
+					return;
+				}
+				
+				var result:SQLResult = _wordModel.query("select * from Words left join WordDetails on Words.id=WordDetails.word_id where istraining=1 and familiarity=3 and example<>'' limit 1");
+				if(result.data != null) {
+					result = _wordModel.query("select * from Words left join WordDetails on Words.id=WordDetails.word_id where istraining=1 and familiarity=3 and example<>''");
+					for(var i:Number=0; i<result.data.length; i++) {
+						if(result.data[i].spelling.indexOf(" ") == -1) {
+							if(!LemmaManager.checkLemma(result.data[i].spelling, result.data[i].example)) {
+								Alert.show("答えになる語が見つかりません。スペルミスはありませんか？",result.data[i].spelling+"の例文確認",Alert.OK,this);
+								snd.play();
+								this.parentApplication.selectWord(result.data[i].spelling);
+								return;
+							}
+						}else {
+							if(result.data[i].example.toLowerCase().indexOf(result.data[i].spelling.toLowerCase()) == -1) {
+								Alert.show("答えになる語が見つかりません。スペルミスはありませんか？",result.data[i].spelling+"の例文確認",Alert.OK,this);
+								snd.play();
+								this.parentApplication.selectWord(result.data[i].spelling);
+								return;
+							}
+						}
+					}
+					Application.application.outputLog(0, "", "study", "checkStart3to4", "", "");
+	
+					var _study3to4Win:study3to4Window = study3to4Window(
+						PopUpManager.createPopUp(this, study3to4Window, true, PopUpManagerChildList.POPUP));
+					_study3to4Win.addEventListener(CloseEvent.CLOSE, study3to4WindowCloseHandler, false, 0, true);
+					setWindowPosition(_study3to4Win);
+				}else {
+					study3to4WindowCloseHandler(null);
+				}
+			}
+			
+			private function study3to4WindowCloseHandler(e:CloseEvent):void {
+				init();
+				this.parentApplication.updateNotifty();
+//				(this.parent.parent as listWindow).init();
+
+				var result:SQLResult = _wordModel.query("select * from Words left join WordDetails on Words.id=WordDetails.word_id where istraining=1 and familiarity=3 and example='' limit 1");
+				if(result.data != null) {
+					Alert.show(result.data[0].spelling+" の例文を入力しましょう。","確認",Alert.OK,this);
+					snd.play();
+					this.parentApplication.selectWord(result.data[0].spelling);
+					return;
+				}
+			}
+
+
+
+			
+			private function checkStart4to5():void {
+				if(this.parentApplication.isSaveCheck()) {
+					this.parentApplication.editWord(null);
+					return;
+				}
+				var result:SQLResult = _wordModel.query("select * from Words left join WordDetails on Words.id=WordDetails.word_id where istraining=1 and familiarity=4 and yourproduction<>'' limit 1");
+				if(result.data != null) {
+					Application.application.outputLog(0, "", "study", "checkStart4to5", "", "");
+	
+					var _study4to5Win:study4to5Window = study4to5Window(
+						PopUpManager.createPopUp(this, study4to5Window, true, PopUpManagerChildList.POPUP));
+					_study4to5Win.addEventListener(CloseEvent.CLOSE, study4to5WindowCloseHandler, false, 0, true);
+					setWindowPosition(_study4to5Win);
+				}else {
+					study4to5WindowCloseHandler(null);
+				}
+
+			}
+			
+
+			private function study4to5WindowCloseHandler(e:CloseEvent):void {
+				init();
+				this.parentApplication.updateNotifty();
+//				(this.parent.parent as listWindow).init();
+
+				var result:SQLResult = _wordModel.query("select * from Words left join WordDetails on Words.id=WordDetails.word_id where istraining=1 and familiarity=4 and yourproduction='' limit 1");
+				if(result.data != null) {
+					Alert.show(result.data[0].spelling+" の自己表現を入力しましょう。","確認",Alert.OK,this);
+					snd.play();
+
+					this.parentApplication.selectWord(result.data[0].spelling);
+					return;
+				}
+			}
+
+
+			private function windowCloseHandler(e:CloseEvent):void {
+				init();
+				this.parentApplication.updateNotifty();
+//				(this.parent.parent as listWindow).init();
+			}
+
+		]]>
+	</mx:Script>
+	<utilities:EnterButton id="btn1to2" label="文字・音声と意味を一致させよう"  icon="@Embed('assets/familiarity2.png')"  width="310" textAlign="left" click="checkStart1to2()" y="19" height="50" horizontalCenter="-166" enabled="false"  fontSize="13"  />
+	<utilities:EnterButton id="btn2to3" label="英語に直そう"  icon="@Embed('assets/familiarity3.png')"  width="310" textAlign="left" click="checkStart2to3()" y="19" height="50" horizontalCenter="166" enabled="false"  fontSize="13" />
+	<utilities:EnterButton id="btn3to4" label="文の中で使おう"  icon="@Embed('assets/familiarity4.png')"  width="310" textAlign="left" click="checkStart3to4()" y="87" height="50" horizontalCenter="-166" enabled="false"  fontSize="13" />
+	<utilities:EnterButton id="btn4to5" label="自分で表現しよう"  icon="@Embed('assets/familiarity5.png')" width="310" textAlign="left" click="checkStart4to5()" y="87" height="50" horizontalCenter="166" enabled="false"  fontSize="13" />
+</mx:Panel>

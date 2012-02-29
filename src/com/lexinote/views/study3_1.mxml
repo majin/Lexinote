@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Panel 
+	xmlns:mx="http://www.adobe.com/2006/mxml"
+	xmlns:utilities="com.lexinote.utilities.*"
+	width="100%" height="100%" horizontalAlign="center" layout="absolute" currentState="stateOK" verticalScrollPolicy="off">
+	<mx:Script>
+		<![CDATA[
+			import mx.core.Application;
+			import mx.controls.Alert;
+			import com.lexinote.utilities.voice.VoiceAPILoader;	
+			import com.lexinote.utilities.voice.VoicePlayer;
+			import com.lexinote.utilities.LemmaManager;
+			import mx.managers.CursorManager;
+			private var _vapi:VoiceAPILoader;
+
+			private var _word:Object;
+			private var _correctSpelling:String;
+			private var _example:String;
+			private var _retryCount:Number;
+			
+			public function init(word:Object):void {
+				_word = word;
+				_retryCount = 0;
+				
+				setConfig();
+				
+				hint.visible = false;
+				example.visible = true;
+				correct.visible = false;
+				correct2.visible = false;
+				incorrect.visible = false;
+				this.currentState = "stateOK";				
+				
+				var s:String = "";
+				for(var i:Number=0; i<_correctSpelling.length; i++) {
+					s += "_";
+				}
+				dummySpelling.text = s;
+				inputSpelling.text = "";
+				inputSpelling.maxChars = _correctSpelling.length;
+				inputSpelling.setFocus();
+				example.text = _example;
+				
+				this.addEventListener(KeyboardEvent.KEY_DOWN, function (event:KeyboardEvent):void
+				{
+					if (event.keyCode == Keyboard.ENTER) {
+						judge();
+					}
+				});
+
+			}
+
+			private function setConfig():void {
+				//レマ化データの取得
+				var lemmas:Array = LemmaManager.getLemmas(_word.spelling);
+				
+				for(var i:Number=0; i<lemmas.length; i++) {
+					var wk:String = _word.example;
+					var pattern:Array = new Array();
+					pattern[0] = new RegExp(""+lemmas[i]+"", "i");
+					pattern[1] = new RegExp("[^a-zA-Z]"+lemmas[i]+"[^a-zA-Z]", "ig");
+					pattern[2] = new RegExp("[^a-zA-Z]"+lemmas[i]+"$", "i");
+					for(var j:Number=0; j<pattern.length; j++) {
+						var hits:Array = wk.match(pattern[j]);
+						if(hits && hits.length > 0) {
+							wk = wk.replace(pattern[0],"[  ] ");
+							wk = wk.replace(pattern[1]," [  ] ");
+							wk = wk.replace(pattern[2]," [  ]");
+							hits[0] = hits[0].replace(/^[^a-zA-Z]+/g, ""); // RTrim 
+							hits[0] = hits[0].replace(/[^a-zA-Z]+$/g, ""); // LTrim
+							_correctSpelling = hits[0];
+							_example = wk;
+							return;
+						}
+					}
+/*					
+					var pattern1:RegExp = new RegExp("[^a-zA-Z]"+lemmas[i]+"[^a-zA-Z]", "ig");
+					var hits:Array = wk.match(pattern1);
+					if(hits && hits.length > 0) {
+						wk = wk.replace(pattern1," [  ] ");
+						hits[0] = hits[0].replace(/^[^a-zA-Z]+/g, ""); // RTrim 
+						hits[0] = hits[0].replace(/[^a-zA-Z]+$/g, ""); // LTrim
+						_correctSpelling = hits[0];
+						_example = wk;
+						return;
+					}
+*/
+				}
+				_correctSpelling = _word.spelling;
+				_example = _word.example; //空欄なし？
+				return;
+			}
+				
+
+
+			
+			private function judge():void {
+				var s:String = "";
+				Application.application.outputLog(_word.id, _word.spelling, "study", "study3_1", "judge", inputSpelling.text);
+				if(inputSpelling.text == _correctSpelling) {
+					for(var i:Number=0; i<_correctSpelling.length; i++) {
+						s += " ";
+					}
+					dummySpelling.text = s;
+					this.currentState = "stateNext";
+					incorrect.visible = false;
+					if(_retryCount == 0) {
+						correct.visible = true;
+					}else {
+						correct2.visible = true;
+						
+					}
+					hint.visible = false;
+				}else {
+					
+					
+					var hintFlag:Boolean = false;
+					var hintStr:String = "";
+					for(i=0; i<_correctSpelling.length; i++) {
+						if(inputSpelling.text.length > i && inputSpelling.text.charAt(i) == _correctSpelling.charAt(i)) {
+							s += " "; //_correctSpelling.charAt(i);
+							hintStr += _correctSpelling.charAt(i);
+						}else {
+							s += "_";
+							if(!hintFlag) {
+								hintStr += _correctSpelling.charAt(i);
+								hintFlag = true;
+							}else {
+								hintStr += "_";
+							}
+						}
+					}
+					hint.text = hintStr;
+					hint.visible = true;
+					
+					dummySpelling.text = s;
+					_retryCount++;
+					incorrect.visible = true;
+				}
+			}
+
+			private function goNext():void {
+				if(_retryCount == 0) {
+					parentDocument.correctWord(_word);
+				}
+				parentDocument.nextWord();
+			}
+			
+			private function voicePlay(txt:String):void {
+				if(txt.replace(" ", "") == "") {
+					return;
+				}
+				_vapi = new VoiceAPILoader();
+				_vapi.addEventListener(Event.COMPLETE, handleVoicePlay, false, 0, true);
+				_vapi.getVoiceData(txt);
+			}
+			
+			private function handleVoicePlay(event:Event):void 
+			{
+				CursorManager.removeBusyCursor();
+
+//		        var vp:VoicePlayer = new VoicePlayer();
+//		        vp.play(_vapi.data );
+			}
+			
+			private function dummy():void {
+				/* 	なぜかこれがなければボタンが表示されず */
+			}
+			
+			private function onResize(e:Event):void {
+				inputSpelling.width = dummySpelling.width;
+			}
+		]]>
+	</mx:Script>
+	<mx:Image id="correct" source="@Embed('assets/correct.png')" y="180"  horizontalCenter="0" alpha="0.3" />
+	<mx:Image id="correct2" source="@Embed('assets/correct2.png')" y="180"  horizontalCenter="0" alpha="0.3" />
+	<mx:Image id="incorrect" source="@Embed('assets/incorrect.png')" y="180"  horizontalCenter="0" alpha="0.3" />
+
+	<mx:Label text="文中の空欄を埋めてください。" fontSize="23" horizontalCenter="0" y="30.15" color="#682406" id="label1"/>
+	<mx:TextArea y="70" width="90%" fontSize="27" horizontalCenter="0" id="example" color="#047A26" height="160" backgroundAlpha="0"/>
+	
+	<mx:Label y="255" fontSize="44" horizontalCenter="0" id="dummySpelling" color="#999999" resize="onResize(event)" fontFamily="ＭＳ ゴシック,Osaka－等幅" paddingLeft="5" paddingRight="5" />
+	<mx:TextInput y="253" fontSize="44" horizontalCenter="0" id="inputSpelling" backgroundAlpha="0.5" paddingLeft="0" paddingRight="0" restrict="[a-zA-Z ']" fontFamily="ＭＳ ゴシック,Osaka－等幅" />
+	<mx:Label y="315" fontSize="44" color="#cccccc" horizontalCenter="0" id="hint"/>
+
+    <mx:transitions>
+        <mx:Transition id="myTransition1" fromState="*" toState="stateOK">
+            <mx:Parallel id="t1" targets="{[btnOK]}">
+                <mx:Fade duration="500" alphaFrom="0" />
+                <mx:Move duration="500" yFrom="{this.height+btnOK.height}" />
+            </mx:Parallel>
+        </mx:Transition>
+        <mx:Transition id="myTransition2" fromState="*" toState="stateNext">
+            <mx:Parallel id="t2" targets="{[btnNoNext]}">
+                <mx:Move duration="500" xFrom="{-btnNoNext.width}" />
+            </mx:Parallel>
+        </mx:Transition>
+     </mx:transitions>
+     
+
+	<mx:states>
+		<mx:State name="stateOK" enterState="inputSpelling.setFocus()">
+			<mx:AddChild position="lastChild">
+				<utilities:EnterButton id="btnOK" y="400" label="OK" width="123" height="90" fontSize="30" color="#065465" click="judge()" buttonMode="true" x="228.5"/>
+			</mx:AddChild>
+		</mx:State>
+		<mx:State name="stateNext" enterState="btnNoNext.setFocus()">
+			<mx:AddChild position="lastChild">
+				<utilities:EnterButton id="btnNoNext" y="400" label="次の語へ" width="222" height="90" fontSize="30" color="#065465"  click="goNext()" buttonMode="true" x="179"/>
+			</mx:AddChild>
+		</mx:State>
+	</mx:states>
+</mx:Panel>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" width="350" height="216" backgroundColor="#ffffff"  creationComplete="init()">
+
+	<mx:Script>
+		<![CDATA[
+			import mx.core.Application;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			
+
+			private function init():void {
+				bServer.enabled = Application.application.isLogin();
+			}
+
+			private function clickServer(event:MouseEvent):void {
+				this.visible = false;
+				Alert.buttonWidth = 150; 
+				Alert.show("サーバで保管している内容でノートブックを更新します。\nノートブックが上書きされますが、よろしいですか？", "確認", Alert.OK|Alert.CANCEL, this, checkHandler, null, Alert.CANCEL);
+			}
+			private function checkHandler(e:CloseEvent):void {
+				if(e.detail == Alert.OK) {
+//					(parent as inputWindow).serverImport(); 
+					Application.application.serverImport();
+					dispatchEvent(new CloseEvent(CloseEvent.CLOSE));
+				}else {
+//					this.visible = true;
+				}
+			}
+
+			private function clickFile(event:MouseEvent):void {
+//				(parent as inputWindow).dbImport();
+				Application.application.dbImport();
+				dispatchEvent(new CloseEvent(CloseEvent.CLOSE));
+			}
+
+			private function cancel():void {
+				dispatchEvent(new CloseEvent(CloseEvent.CLOSE));
+			}
+			
+		]]>
+	</mx:Script>
+
+	<mx:VBox x="10" y="23" width="{this.width-25}" height="{this.height-40}" paddingLeft="30" paddingRight="30" paddingBottom="30" horizontalAlign="center" verticalScrollPolicy="off" horizontalScrollPolicy="off">
+		<mx:Label text="バックアップを読み込む"/>
+		<mx:Spacer height="10" />
+		<mx:Button id="bServer" label="サーバからダウンロードする"  icon="@Embed('assets/network.png')"  width="100%" textAlign="left" click="clickServer(event)"/>
+		<mx:Spacer height="10" />
+		<mx:Button id="bFile" label="ファイルを読み込む"  icon="@Embed('assets/floppy.png')"  width="100%" textAlign="left" click="clickFile(event)"/>
+		<mx:Spacer height="10" />
+		<mx:Button label="キャンセル" click="cancel()" />
+	</mx:VBox>
+
+</mx:Canvas>

@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml"
+	xmlns:views="com.lexinote.views.*"
+	 creationComplete="init()" hide="loadCancel()" verticalScrollPolicy="off" horizontalScrollPolicy="off" paddingBottom="0">
+
+	<mx:Script>
+		<![CDATA[
+			import mx.core.Application;
+			import mx.controls.HTML;
+			import mx.managers.CursorManager;
+			import mx.formatters.DateFormatter;
+			
+			public var location:String;
+			
+			public var _creationComplete:Boolean = false;
+			private var _browser:HTML;
+			
+			[Bindable]
+			private var _searchText:String = "";
+
+			private function init():void {
+				_creationComplete = true;
+				_browser = lexinews;
+			}
+			
+			public function setText(txt:String):void {
+				if(_searchText != txt) {
+					_searchText = txt;
+				}else {
+//					reload();
+				}
+				
+				if(_browser == null) return;
+
+
+				if(_browser.id == "lexinews" && Application.application.listWin.dgList.selectedItem) {
+					var date_fmt:DateFormatter = new DateFormatter();
+					date_fmt.formatString = "YYYY/MM/DD";
+					var subf:String = date_fmt.format(new Date(Application.application.listWin.dgList.selectedItem.created));
+//trace(Application.application._bloggerURL+subf+"/"+spelling+"/");				
+					_browser.location = Application.application._bloggerURL+subf+"/"+_searchText+"/";
+				}
+				
+				if(_browser != null) {
+					Application.application.outputLog(0, "", "browser", "dictionary", _browser.id, _searchText);
+				}
+			}
+            private function html_load(evt:Event):void {		
+				CursorManager.setBusyCursor();
+            }
+            private function html_complete(evt:Event):void {
+ 				CursorManager.removeAllCursors();
+            }
+
+			public function changeTab(type:String):void {
+				if(type == "search") {
+					switch(viewstack1.selectedChild.id) {
+						case "lexinews_c":
+							viewstack1.selectedChild = weblio_c;
+							selectView()
+							break;
+					}
+				}else
+				if(type == "lexinews") {
+					switch(viewstack1.selectedChild.id) {
+						case "lexinews_c":
+							break;
+						default:
+							viewstack1.selectedChild = lexinews_c;
+							selectView();
+							break;
+					}
+				}
+			}
+			private function selectView():void {
+				switch(viewstack1.selectedChild.id) {
+					case "lexinews_c": _browser = lexinews;  break;
+					case "weblio_c": _browser = weblio;  break;
+					case "goo_c": _browser = goo; break;
+					case "longman_c": _browser = longman; break;
+					case "alc_c": _browser = alc; break;
+					case "ccs_c": _browser = ccs; break;
+				}
+				if(_browser != null) {
+					Application.application.outputLog(0, "", "browser", "dictionary", _browser.id, "タブ切替");
+				}
+			}
+			private function browserOpen():void {
+				Application.application.outputLog(0, "", "browser", "dictionary", "open", "外部ブラウザを起動");
+				var url:String = _browser.location;
+				navigateToURL(new URLRequest(url));
+			}
+			private function loadCancel():void {
+				if(_browser != null) {
+					_browser.cancelLoad();
+				}
+ 				CursorManager.removeAllCursors();
+			}
+			
+			private function reload():void {
+				if(_browser != null) {
+					_browser.reload();
+				}
+ 				CursorManager.setBusyCursor();
+			}
+			
+			private function historyGo(idx:Number):void {
+				if(_browser != null) {
+					_browser.historyGo(idx);
+				}else {
+					//browser0の履歴を遷移したい
+				}
+			}
+		]]>
+	</mx:Script>
+	<mx:HBox verticalAlign="middle">
+		<mx:Image x="13" y="4" source="@Embed('assets/1leftarrow.png')" click="historyGo(-1)"  buttonMode="true"  toolTip="戻る" />
+		<mx:Image x="33" y="4" source="@Embed('assets/1rightarrow.png')" click="historyGo(1)"  buttonMode="true"  toolTip="進む" />
+		<!--mx:Image x="55" y="4" source="@Embed('assets/stop.png')" click="loadCancel()"  buttonMode="true"  toolTip="中止" visible="true" /-->
+		<mx:Image x="55" y="4" source="@Embed('assets/arrow_refresh.png')" click="reload()"  buttonMode="true"  toolTip="最新に更新" visible="true" />
+		<mx:Image x="76" y="4" source="@Embed('assets/internet_web_browser.png')" click="browserOpen()"  buttonMode="true"  toolTip="ブラウザで開く"  visible="true" />
+		<mx:ToggleButtonBar x="10" y="23" id="tbr_engine" dataProvider="viewstack1" visible="true" enabled="true" height="26"  >
+		</mx:ToggleButtonBar>
+	</mx:HBox>
+
+	<mx:ViewStack id="viewstack1" x="10" y="49" width="{this.width}" height="{this.height}" change="selectView()"  >
+		<mx:Canvas id="lexinews_c" label="Lexinews"  x="0" y="0" width="100%" height="100%" borderThickness="0" >
+			<mx:HTML id="lexinews" location="{Application.application._bloggerURL}" x="0" y="0" width="100%" height="100%" paddingLeft="5" locationChange="html_load(event);" complete="html_complete(event);" />
+		</mx:Canvas>
+		<mx:Canvas id="weblio_c" label="weblio"  x="0" y="0" width="100%" height="100%" borderThickness="0" >
+			<mx:HTML id="weblio" location="http://ejje.weblio.jp/content/{_searchText}" x="0" y="0" width="100%" height="100%" paddingLeft="5" locationChange="html_load(event);" complete="html_complete(event); weblio.verticalScrollPosition=0"/>
+		</mx:Canvas>
+		<mx:Canvas id="goo_c" label="goo辞書"  x="0" y="0" width="100%" height="100%" borderThickness="0" >
+			<mx:HTML id="goo" location="http://dictionary.goo.ne.jp/srch/ej/{_searchText}/m0u/" x="0" y="0" width="100%" height="100%" paddingLeft="5" locationChange="html_load(event);" complete="html_complete(event); goo.verticalScrollPosition=0"/>
+		</mx:Canvas>
+		<mx:Canvas id="longman_c" label="ロングマン英英"  x="0" y="0" width="100%" height="100%" borderThickness="0" >
+			<mx:HTML id="longman" location="http://www.ldoceonline.com/search/?q={_searchText}&amp;x=70&amp;y=171"  x="0" y="0" width="100%" height="100%"  paddingLeft="5" locationChange="html_load(event);" complete="html_complete(event);" />
+		</mx:Canvas>
+		<mx:Canvas id="alc_c" label="英辞郎" x="0" y="0" width="100%" height="100%" borderThickness="0" >
+			<mx:HTML id="alc" location="http://eow.alc.co.jp/{_searchText}/UTF-8/?ref=sa" x="0" y="0" width="100%" height="100%"  paddingLeft="5" locationChange="html_load(event);" complete="html_complete(event);" />
+		</mx:Canvas>
+		<mx:Canvas id="ccs_c" label="compleat lexical tutor"  x="0" y="0" width="100%" height="100%" borderThickness="0" >
+			<mx:HTML id="ccs" location="http://lexinote.com/AIR/browser/ccs.php?w={_searchText}" x="0" y="0" width="100%" height="100%"  paddingLeft="5" locationChange="html_load(event);" complete="html_complete(event);" />
+		</mx:Canvas>
+	</mx:ViewStack>
+
+</mx:VBox>

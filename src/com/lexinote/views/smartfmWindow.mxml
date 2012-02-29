@@ -1,0 +1,321 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Box xmlns:mx="http://www.adobe.com/2006/mxml" width="400" height="300" backgroundColor="#5AAC75" horizontalScrollPolicy="off" verticalScrollPolicy="auto">
+	<mx:Script>
+		<![CDATA[
+			import mx.preloaders.DownloadProgressBar;
+			import mx.containers.Canvas;
+			import mx.containers.HBox;
+			import mx.controls.Image;
+			import mx.controls.TextArea;
+			import mx.controls.Alert;
+			import mx.collections.ArrayCollection;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.rpc.http.mxml.HTTPService;
+			import mx.managers.CursorManager;
+			import mx.events.DragEvent;
+	        import mx.core.UIComponent;
+	        import mx.core.IFlexDisplayObject;
+	        import mx.core.DragSource;
+	        import mx.managers.DragManagerImpl;
+			import com.lexinote.utilities.voice.VoiceAPILoader;	
+
+			import com.lexinote.utilities.VTextArea;
+			
+			[@Embed('assets/irc_voice.png')]
+		    private var _irc_voice:Class;
+	    
+	    	[Bindable]
+			private var _word:String;
+			[Bindable]
+			private var _meaning:String;
+			
+			private var _voice:String;
+			
+			private var _vapi:VoiceAPILoader;
+
+			public function set spelling(word:String):void{
+				speaker.visible = false;
+				if(word == "") {
+					_word = "検索する語句を入力してください。";
+					return;
+				}
+				_word = word;
+				_meaning = "";
+				_voice = "";
+				myList.removeAllChildren();
+				
+//				mx.controls.Alert.show(_word);
+				sfm_getItem(_word);
+			}
+
+			private  function sfm_getItem(_word:String):void {
+				var service:HTTPService = new HTTPService();
+				service.url = "http://api.iknow.co.jp/items/matching/"+_word+".xml";
+				service.showBusyCursor = true;
+				service.addEventListener(ResultEvent.RESULT, sfm_getItemCompleteHandler, false, 0, true);
+				service.addEventListener(FaultEvent.FAULT, sfm_getItemFaultHandler, false, 0, true);
+				
+				var parameters:Object = new Object();
+				parameters.part_of_speech = "v";
+				parameters.api_key = "b7r2gjqhhvj25tdakzfcadzv";
+				
+				service.send(parameters);
+	
+			}
+			
+			public function sfm_getItemCompleteHandler(event:ResultEvent):void {
+				if(event.result.vocabulary.items == null) {
+					_meaning = "<'"+_word+"'は見つかりませんでした。>";
+					return;
+				}
+				var items:ArrayCollection = event.result.vocabulary.items.item as ArrayCollection;
+				if(items == null) {
+					items = new ArrayCollection();
+					items.addItem(event.result.vocabulary.items.item);
+				}
+				
+				var i:Number = 0;
+				for(; i<items.length; i++) {
+					if(items[i].cue.part_of_speech != "None")	{
+						break;
+					}
+				}
+				_meaning = items[i].responses.response.text;
+				_voice   = items[i].cue.sound;
+//				if(_voice != "" && _voice != null) {
+				
+					speaker.visible = true;
+//				}
+				/*
+				var items:ArrayCollection = event.result.rss.channel.item as ArrayCollection;
+				var collection:ArrayCollection = new ArrayCollection();
+				
+				for (var key:String in items) {
+					collection.addItem(new FlickrPhoto(items[key]));
+				}
+				
+				photoFeeds = collection;
+				*/
+
+				sfm_getSentences(_word);
+			}
+			
+			public function sfm_getItemFaultHandler(event:FaultEvent):void {
+				CursorManager.removeAllCursors();
+			}
+	
+			private  function sfm_getSentences(_word:String):void {
+				var service:HTTPService = new HTTPService();
+				service.url = "http://api.iknow.co.jp/sentences/matching/"+_word+".xml";
+				service.showBusyCursor = true;
+				service.addEventListener(ResultEvent.RESULT, sfm_getSentencesCompleteHandler, false, 0, true);
+				service.addEventListener(FaultEvent.FAULT, sfm_getSentencesFaultHandler, false, 0, true);
+				
+				var parameters:Object = new Object();
+//				parameters.part_of_speech = "v";
+//				parameters.api_key = "b7r2gjqhhvj25tdakzfcadzv";
+				
+				service.send(parameters);
+	
+			}
+			
+			public function sfm_getSentencesCompleteHandler(event:ResultEvent):void {
+				var sentences:ArrayCollection = event.result.sentences.sentence as ArrayCollection;
+				
+				var mText:String;
+				var mImage:String;
+				var mSound:String;
+				var i:Number = 0;
+				for(; i<sentences.length; i++) {
+					if(i == 6) {
+						;
+					}
+					if(!sentences[i].translations) {
+						continue;
+					}
+
+
+					mImage = sentences[i].image;
+					if(mImage != null && mImage.indexOf("/users/") != -1) {  //ユーザがアップした写真は無視する
+						mImage = "";
+					}
+					
+					
+					mSound = sentences[i].sound;
+					if(sentences[i].translations.sentence.length > 0) {
+						if(sentences[i].translations.sentence[0].language != "ja") {
+							continue;
+						}
+//						mText = sentences[i].text + "\n" + sentences[i].translations.sentence[0].text + "(creator:"+sentences[i].translations.sentence[0].author.name+")";
+						mText = sentences[i].text + "\n" + sentences[i].translations.sentence[0].text;
+					}else {
+						if(sentences[i].translations.sentence.language != "ja") {
+							continue;
+						}
+//						mText = sentences[i].text + "\n" + sentences[i].translations.sentence.text + "(creator:"+sentences[i].translations.sentence.author.name+")";					
+						mText = sentences[i].text + "\n" + sentences[i].translations.sentence.text;					
+					}
+
+					var hb:HBox = new HBox();
+					hb. verticalScrollPolicy = "off";
+					hb.percentWidth = 100;
+					myList.addChild(hb);
+
+					var vb:VBox = new VBox();
+					vb.percentWidth = 100;
+					
+					var oi:Image;
+					if(mImage != null && mImage != "") {
+						oi = new Image();
+						oi.source = mImage;
+						oi.width = 120;
+						oi.height = 120;
+						oi.addEventListener(MouseEvent.MOUSE_DOWN, mouseDownHandler, false, 0, false);
+						oi.addEventListener(DragEvent.DRAG_COMPLETE, dragCompleteHandler, false, 0, false);
+						hb.addChild(oi);
+						
+					}else {
+						var o1:Canvas = new Canvas();
+						o1.setStyle("backgroundColor", 0xD6C9C9);
+						o1.width = 120;
+						o1.height = 120;
+						o1.setStyle("boderStyle","solid");
+						o1.setStyle("cornerRadius", 0);
+						o1.setStyle("borderThickness", 0);
+						
+						var o2:Label = new Label();
+						o2.text = "NO IMAGE";
+						o2.setStyle("verticalCenter", 0);
+						o2.setStyle("horizontalCenter", 0);
+						o2.setStyle("fontSize", 16);
+						o2.setStyle("color", 0xFDFDFD);
+						o2.setStyle("fontWeight","bold");
+						o1.addChild(o2);
+						hb.addChild(o1);
+					}					
+					hb.addChild(vb);
+
+					var tb:VTextArea = new VTextArea();
+					tb.percentWidth = 100; 
+					tb.autoResize = true;
+					vb.addChild(tb);
+
+					if(mSound != null && mSound != "") {
+						var os:Image = new Image();
+						os.source = _irc_voice;
+						os.buttonMode = true;
+						os.toolTip = mSound;
+						os.addEventListener(MouseEvent.CLICK, btnPlay, false, 0,false);
+						vb.addChild(os);
+					}else {
+						var os:Image = new Image();
+						os.source = _irc_voice;
+						os.buttonMode = true;
+						os.toolTip = mText;
+						os.addEventListener(MouseEvent.CLICK, btnPlay2txt, false, 0,false);
+						vb.addChild(os);
+					}					
+
+					myList.validateNow();
+					tb.text = mText; //自動的に高さ調節するために生成完了後にテキストを設定
+
+//					if(tb.height > oi.height) {
+//						hb.height = tb.height;
+//					}else {
+//						hb.height = oi.height;
+//					}
+				}
+				
+				/*
+				var items:ArrayCollection = event.result.rss.channel.item as ArrayCollection;
+				var collection:ArrayCollection = new ArrayCollection();
+				
+				for (var key:String in items) {
+					collection.addItem(new FlickrPhoto(items[key]));
+				}
+				
+				photoFeeds = collection;
+				*/
+			}
+			private function btnPlay(e:MouseEvent):void {
+				voicePlay((e.target as Image).toolTip,"");
+				
+			}
+			
+			private function btnPlay2txt(e:MouseEvent):void {
+				voicePlay("",(e.target as Image).toolTip);			
+			}
+			
+			public function sfm_getSentencesFaultHandler(event:FaultEvent):void {
+				CursorManager.removeAllCursors();
+			}
+				
+			private function voicePlay(mp3uri:String, txt:String):void {
+				if(mp3uri != "" && mp3uri != null) {
+		            var request:URLRequest = new URLRequest(mp3uri);
+		            var soundFactory:Sound = new Sound();
+		            soundFactory.load(request);
+		            soundFactory.play();
+		  		}else {
+					_vapi = new VoiceAPILoader();
+					_vapi.addEventListener(Event.COMPLETE, handleVoicePlay, false, 0, true);
+					_vapi.getVoiceData(txt);
+		  		}
+			}
+			
+			private function handleVoicePlay(event:Event):void 
+			{
+				CursorManager.removeBusyCursor();
+
+//		        var vp:VoicePlayer = new VoicePlayer();
+//		        vp.play(_vapi.data );
+			}
+			
+			
+	        private function mouseDownHandler(event:MouseEvent):void{
+                var image:Image=Image(event.currentTarget);
+               
+              
+	            //ドラッグされるデータを作成
+	            var dragSource:DragSource = new DragSource();
+	            dragSource.addData(image.source, "img");
+				
+	            //ドラッグ中のイメージを作成
+	            var imageProxy:UIComponent = new UIComponent();
+	            var bitmap:Bitmap = new Bitmap();
+	            var bitmapData:BitmapData 
+	                = new BitmapData(image.width, image.height);
+	            bitmapData.draw(image);
+	            bitmap.bitmapData = bitmapData;
+	            imageProxy.addChild(bitmap);
+	            
+				addEventListener(DragEvent.DRAG_COMPLETE, dragCompleteHandler, false, 0, false);
+ 	
+	            //ドラッグを開始
+	            DragManagerImpl.getInstance().doDrag(image, dragSource, event, imageProxy);
+	            trace("drag start");
+	        }
+	
+	        private function dragCompleteHandler(event:DragEvent):void{
+	            DragManagerImpl.getInstance().endDrag();
+	        	
+//	        	var vbox:VBox = VBox(event.currentTarget);
+//	            vbox.setStyle("borderStyle", "none");
+	        }
+   		]]>
+	</mx:Script>
+	<mx:VBox width="100%" height="100%" paddingLeft="10" paddingTop="10" paddingRight="10" paddingBottom="10">
+		<mx:HBox width="100%" verticalAlign="middle">
+			<mx:Label text="{_word}" color="#FDFDFD" id="lb_spelling" fontSize="20"/>
+			<mx:Image id="speaker" source="@Embed('assets/irc_voice.png')" buttonMode="true" 
+				click="voicePlay(_voice, _word)" width="16" height="16"/>
+
+		</mx:HBox>
+		<mx:HRule strokeColor="#F9FDFD" width="100%"/>
+		<mx:Text text="{_meaning}" color="#FDFDFD" id="lb_meaning" fontSize="20" textAlign="left" width="100%"/>
+		
+		<mx:VBox id="myList" width="100%" height="100%" paddingLeft="10" paddingTop="10" paddingRight="10" paddingBottom="10"/>
+		
+	</mx:VBox>
+</mx:Box>

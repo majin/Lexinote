@@ -1,0 +1,1233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml"
+	xmlns:utilities="com.lexinote.utilities.*"
+	xmlns:Rating="com.Rating.*" creationComplete="init()"
+	horizontalScrollPolicy="off" verticalScrollPolicy="off"
+	height="506"
+	  
+	  >
+	<!--mx:Image x="341" y="3" source="@Embed('assets/close.png')" click="this.visible=false" toolTip="閉じる"  buttonMode="true"  width="16" height="16"/-->
+	<mx:Script>
+		<![CDATA[
+			import mx.controls.textClasses.TextRange;
+			import mx.events.ItemClickEvent;
+			import mx.controls.LinkButton;
+			import com.lexinote.utilities.VTextArea;
+			import mx.events.ScrollEvent;
+        	import mx.events.DragEvent;		
+       		import mx.events.ListEvent;
+			import mx.controls.Alert;
+			import mx.core.Application;
+			import mx.core.UITextField;
+			import mx.controls.Text;
+			import mx.core.UIComponent;
+			import mx.core.Window;
+			import mx.managers.CursorManager;
+			import mx.managers.DragManagerImpl;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.formatters.DateFormatter;
+			import mx.collections.ArrayCollection;
+
+
+
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			import mx.managers.PopUpManagerChildList;
+			import com.adobe.serialization.json.JSON;
+
+
+			import com.lexinote.utilities.voice.VoiceAPILoader;	
+			import com.lexinote.utilities.voice.VoicePlayer;
+			import com.lexinote.utilities.photoviewer.PhotoViewer;
+			import com.lexinote.utilities.LemmaManager;
+			import com.lexinote.models.Word;
+			import com.lexinote.models.WordDetail;
+			
+            [Embed(source="assets/sound/dog2_1.mp3")]
+            [Bindable]
+            public var sndCls:Class;
+            public var snd:Sound = new sndCls() as Sound; 
+
+			private var _vapi:VoiceAPILoader;
+			[Bindable]
+			private var _spelling:String = "";
+			private var _photoViewerWindow:PhotoViewer;
+			private var _inputTrainingWin:inputTrainingWindow;
+			
+			private var _wordModel:Word;
+			private var _word:Object;
+			private var _nextWord:String = null;
+			private var _wordBkup:Object;
+//			private var _imageUrl:String = null;
+			private var _skipResult:SQLResult = null;
+
+			[Bindable]
+			private var _wordclassList:Array = [
+				{ c: "n" , label: "[名]" },
+				{ c: "v" , label: "[動]" },
+				{ c: "adj" , label: "[形]" },
+				{ c: "adv" , label: "[副]" },
+				{ c: "other" , label: "[他]" },
+				{ c: "unknown" , label: "？？" }
+			];
+
+	        [Embed(source="assets/folder_images.png")]
+	        public var defaultPhoto:Class;   
+
+			public function get spelling():String {
+				return this._spelling;
+			}
+			public function set spelling(txt:String):void {
+				var le:String = null;
+				this.enabled = (txt=="")?false:true;
+				
+				if(_nextWord != txt) {	// キャンセル済みでなければ
+					if(this._spelling != "" && this._spelling != txt) { //違うｱｲﾃﾑが入力された
+						if(isNaN(_word.id) && isModified(_word)) {
+							snd.play();
+							saveWordCheck();
+							return;
+						}		
+					}
+
+					if(_word && isModified(_word)) {
+						snd.play();
+						saveWordCheck(); //変更があれば親密度入力を強制する
+						_nextWord = txt;
+						return;
+					}
+				}
+				var selWords:Array = _wordModel.find({spelling: txt});
+				if(selWords == null) {
+					le = LemmaManager.getWord(txt);
+					if(le != null) {
+						txt = le;
+						selWords = _wordModel.find({spelling: txt});
+					}
+				}
+				
+				this._spelling = txt;
+				if(selWords != null) {
+					_word = selWords[0];
+					if(_word.standard_meaaning != '') {
+//						btnPasteMeaning.visible = true;
+					}else {
+//						btnPasteMeaning.visible = false;
+					}
+
+					if(_word.details == null) {
+						_word.details = new Array;
+						_word.details[0] = getWd();
+					}
+					
+				}else {
+//					btnPasteMeaning.visible = false;
+					_word = new Object();
+					_word.id = NaN;
+					_word.spelling = this._spelling;
+					_word.order_number = 0;
+					_word.standard_meaning = "";
+					_word.level = 0;
+					_word.familiarity = 0;
+					_word.istraining = 0;
+					_word.photo_uri = null;
+					_word.photo_comment = null;
+					_word.count = 0;
+					_word.created = 0;
+					_word.modified = 0;
+					_word.details = new Array;
+					_word.details[0] = getWd();
+				}
+				
+				showNo.text			= isNaN(_word.id)?"新規":_word.id;
+				showSvlLevel.text	= isNaN(_word.id)?"":"Lv. "+_word.level;
+//				inputBasicMeaning.text	= _word.standard_meaning;
+//				inputTraining.selected = (_word.istraining == 0)?false:true;
+				inputFamiliarity.value = _word.familiarity;
+				if(_word.photo_uri != null && _word.photo_uri != "") {
+//					this._imageUrl = _word.photo_uri;
+					photoImage.source = _word.photo_uri;
+				}else {
+					photoImage.source = defaultPhoto;
+				}
+				photoImage.toolTip = _word.photo_comment;
+
+				var s:Array = new Array();
+				var wc:Array = (_word.details[0].wordclass as String).split(",");
+				for(var i:Number=0; i<wc.length; i++) {
+					for(var j:Number=0; j<_wordclassList.length; j++) {
+						if(_wordclassList[j].c == wc[i]) {
+							s[i] = j;
+						}
+					}
+				}
+				selectWordclass.selectedIndices = s;
+				meaning.text = _word.details[0].meaning;
+				example.text = _word.details[0].example;
+				definition.text = _word.details[0].definition;
+				relatedword.text = _word.details[0].relatedword;
+				yourproduction.text = _word.details[0].yourproduction;
+				
+				_wordBkup = _word;
+				
+//				if(le != null) { //	レマデータの場合は読み込まない
+					parentApplication.loadEvent(_word);
+//				}
+
+			}
+			
+			public function isSaveCheck():Boolean {
+				return isModified(_word);
+			}
+			
+			private function isModified(w1:Object):Boolean {
+				if(!w1) {
+					if( "" != meaning.text.replace(/\r/g, '\n') ||
+						"" != example.text.replace(/\r/g, '\n') ||
+						"" != definition.text.replace(/\r/g, '\n') ||
+						"" != relatedword.text.replace(/\r/g, '\n') ||
+						"" != yourproduction.text.replace(/\r/g, '\n')) {
+						return true;
+					}
+				}else
+				if( w1.details[0].wordclass != getWc() ||
+					w1.details[0].meaning.replace(/\r/g, '\n') != meaning.text.replace(/\r/g, '\n') ||
+					w1.details[0].example.replace(/\r/g, '\n') != example.text.replace(/\r/g, '\n') ||
+					w1.details[0].definition.replace(/\r/g, '\n') != definition.text.replace(/\r/g, '\n') ||
+					w1.details[0].relatedword.replace(/\r/g, '\n') != relatedword.text.replace(/\r/g, '\n') ||
+					w1.details[0].yourproduction.replace(/\r/g, '\n') != yourproduction.text.replace(/\r/g, '\n')) {
+					return true;
+				}
+				return false;
+			}
+			
+			private function addWord():void {
+				spelling = "";
+			}
+			
+			private function goPrevious():void {
+				this.btnPrevious.toolTip = "";
+				var idx:Number = Number(showNo.text);
+				if(isNaN(idx)) {
+					//return;
+					idx = 2;
+				}
+				var result:SQLResult = _wordModel.query("select * from Words where id < "+idx+" order by id desc limit 1");
+				if(result.data != null) {
+					spelling = result.data[0].spelling;
+				}
+			}
+			private function goStart():void {
+				var selWords:Array = _wordModel.find({id: 1});
+				spelling = selWords[0].spelling;
+			}
+			
+			private function goEnd():void {
+				var selWords:Array = _wordModel.find(null,"id DESC","1");
+				if(selWords != null) {
+					spelling = selWords[0].spelling;
+				}
+			}
+			private function goSkipNext():void {
+				if(_skipResult == null) {
+//					_skipResult = _wordModel.query("select * from Words where istraining=1 and familiarity < 5 order by familiarity asc, level asc, spelling asc");
+					_skipResult = _wordModel.query("select * from Words where istraining=1 order by familiarity asc, level asc, spelling asc");
+				}
+				if(_skipResult.data.length == 0) {
+					Alert.show("学習中のｱｲﾃﾑはありません。");
+					return;
+				}	
+				
+				var idx:Number = Number(showNo.text);
+				if(isNaN(idx)) {
+					spelling = _skipResult.data[0].spelling;
+					return;
+				}
+				
+				for(var i:Number=0; i<_skipResult.data.length; i++) {
+					if(_skipResult.data[i].id == idx) {
+						if(i < _skipResult.data.length-1) {
+							spelling = _skipResult.data[i+1].spelling;
+						}else {
+							Alert.show("最後のｱｲﾃﾑです。");
+						}
+						return;
+					}
+				}
+				spelling = _skipResult.data[0].spelling;
+			}
+			private function goSkipPrevious():void {
+				if(_skipResult == null) {
+//					_skipResult = _wordModel.query("select * from Words where istraining=1 and familiarity < 5 order by familiarity asc, level asc, spelling asc");
+					_skipResult = _wordModel.query("select * from Words where istraining=1 order by familiarity asc, level asc, spelling asc");
+				}
+				if(_skipResult.data.length == 0) {
+					Alert.show("学習中のｱｲﾃﾑはありません。");
+					return;
+				}	
+
+				var idx:Number = Number(showNo.text);
+				if(isNaN(idx)) {
+					spelling = _skipResult.data[0].spelling;
+					return;
+				}
+				
+				for(var i:Number=0; i<_skipResult.data.length; i++) {
+					if(_skipResult.data[i].id == idx) {
+						if(i > 0) {
+							spelling = _skipResult.data[i-1].spelling;
+						}else {
+							Alert.show("最初のｱｲﾃﾑです。");
+						}
+						return;
+					}
+				}
+				spelling = _skipResult.data[0].spelling;
+			}
+			private function goSkipLast():void {
+//				var result:SQLResult = _wordModel.query("select * from Words where istraining=1 order by id desc limit 1");
+				var result:SQLResult = _wordModel.query("select * from Words where istraining=1 order by id desc limit 1");
+				if(result.data != null) {
+					spelling = result.data[0].spelling;
+				}
+			}
+			private function goSkipFirst():void {
+//				var result:SQLResult = _wordModel.query("select * from Words where istraining=1 order by id asc limit 1");
+				var result:SQLResult = _wordModel.query("select * from Words where istraining=1 order by id asc limit 1");
+				if(result.data != null) {
+					spelling = result.data[0].spelling;
+				}
+			}
+
+			private function goNext():void {
+				this.btnNext.toolTip = "";
+				var idx:Number = Number(showNo.text);
+				if(isNaN(idx)) {
+					//return;
+					idx = 0;
+				}
+
+				var result:SQLResult = _wordModel.query("select * from Words where id > "+idx+" order by id asc limit 1");
+				if(result.data != null) {
+					spelling = result.data[0].spelling;
+				}
+			}
+
+			private function changeShowNo():void {
+				var idx:Number = Number(showNo.text);
+				if(isNaN(idx)) {
+					return;
+				}
+				var selWords:Array = _wordModel.find({id: idx});
+				
+				if(selWords != null && idx > 0 ) {
+					if(selWords != null) {
+						spelling = selWords[0].spelling;
+
+					}
+				}
+			}
+
+			private function init():void {
+				// Ratingが変更された時のイベント追加。
+				//inputFamiliarity.addEventListener(Event.CHANGE, showFamiliarityTooltip, false, 0, true);
+				_wordModel = new Word();
+
+				/*
+				inputSpelling.addEventListener(KeyboardEvent.KEY_DOWN, function (event:KeyboardEvent):void
+				{
+					if (event.keyCode == Keyboard.ENTER) {
+						this.spelling = inputSpelling.text;
+						meaning.setFocus();
+						event.stopImmediatePropagation();
+					}
+				}, false, 0, true);
+				*/
+//@				inputSpelling.editable = false;
+//@				inputSpelling.setStyle("backgroundColor", "#111111");
+//@				inputSpelling.setStyle("color", "#ffffff");
+				
+				this.enabled = false;
+			}
+			
+			private function showFamiliarityTooltip(event:Event):void {
+//				inputFamiliarityTooltip.text = event.currentTarget.tooltips[event.currentTarget.value-1] as String;
+			}
+			
+			private function voicePlay(txt:String):void {
+				if(txt.replace(" ", "") == "") {
+					return;
+				}
+				Application.application.outputLog(_word.id, _word.spelling, "inputWin", "voice", "play", txt);
+
+				_vapi = new VoiceAPILoader();
+				_vapi.addEventListener(Event.COMPLETE, handleVoicePlay, false, 0, true);
+				_vapi.getVoiceData(txt);
+			}
+			
+			private function handleVoicePlay(event:Event):void 
+			{
+				CursorManager.removeBusyCursor();
+
+//		        var vp:VoicePlayer = new VoicePlayer();
+//		        vp.play(_vapi.data );
+			}
+			
+
+			public function openPhotoViewerWindow(event:Event = null):void {
+				if (this._photoViewerWindow == null)
+				{
+					this._photoViewerWindow = new PhotoViewer();
+					this._photoViewerWindow.addEventListener(CloseEvent.CLOSE, photoViewerWindowCloseHandler, false, 0, true);
+					this._photoViewerWindow.addEventListener(Event.SELECT, photoSelectedHandler, false, 0, true);
+					this.parentApplication.addChild(this._photoViewerWindow);
+				}
+				setWindowPosition(this._photoViewerWindow);
+				this._photoViewerWindow.visible = true;
+				this._photoViewerWindow.defaultKeyword = this._spelling;
+				this._photoViewerWindow.defaultImage = photoImage;
+			}
+
+			private function setWindowPosition(w:Sprite):void {
+				w.x      = Application.application.myViewStack.x;
+				w.y      = Application.application.myViewStack.y;
+				w.width  = Application.application.myViewStack.width;
+				w.height = Application.application.myViewStack.height;
+			}
+			
+			public function closePhotoViewerWindow(event:Event = null):void {
+				if (this._photoViewerWindow != null) {
+					this._photoViewerWindow.visible = false;
+				}
+			}
+			
+
+			public function moveGroup(x:Number, y:Number):void {
+				this.move(x+this.x, y+this.y);
+				if (this._photoViewerWindow != null) {
+					this._photoViewerWindow.move(x+this._photoViewerWindow.x, y+this._photoViewerWindow.y);
+				}
+			}
+			/**
+			 * 写真選択ウィンドウのCloseアイコンから閉じられた時に呼び出されるイベントハンドラ。
+			 * 
+			 * @private
+			 */
+			private function photoViewerWindowCloseHandler(event:CloseEvent = null):void
+			{
+				this._photoViewerWindow.visible = false;
+			}
+			
+			/**
+			 * 写真選択ウィンドウの選択ボタンがクリックされた時に呼び出されるイベントハンドラ。
+			 * 
+			 * @private
+			 */
+			private function photoSelectedHandler(event:Event):void
+			{
+				// Imageタグのsourceに画像をセットする
+				//this.view.photoImage.source = this._photoViewerWindow.selectedPhoto.thumbnail.url;
+				// コンポーネントの状態を選択済み(selected)にする
+				//this.view.currentState = "selected";
+				
+				//this.repeatModel.detail.photo_url = this.photoViewerWindow.selectedPhoto.content.url;
+				//this.repeatModel.detail.thumbnail_url = this.photoViewerWindow.selectedPhoto.thumbnail.url;
+				
+				
+				photoImage.source = this._photoViewerWindow.photoImage.source;
+				photoImage.toolTip = this._photoViewerWindow.comment.text;
+//				this._imageUrl = this._photoViewerWindow.imageUrl;
+				
+				this._photoViewerWindow.visible = false;
+				
+				updatePhotoImage();
+			}
+			
+			private function updatePhotoImage():void {
+				if(_word!=null && !isNaN(_word.id)) {
+					_word.photo_comment = photoImage.toolTip;
+					_word.photo_uri = photoImage.source;
+//					_word.photo_uri = this._imageUrl;
+
+					_wordModel.update({id:_word.id}, {
+						photo_uri: _word.photo_uri,
+						photo_comment: _word.photo_comment
+					});
+					Application.application.outputLog(_word.id, _word.spelling, "inputWin", "photo", _word.photo_comment, _word.photo_uri);
+
+				}
+			}
+			
+			/**
+			 * 写真の選択を取り消すボタンが押された時に呼び出されるイベントハンドラ。
+			 * 
+			 * @private
+			 */
+			public function removeSelectedPhoto(event:Event = null):void
+			{
+				//this.view.photoImage.source = null;
+				//this.view.currentState = "noSelected";
+				this._photoViewerWindow.visible = false;
+			}
+			
+			private function getWd():Object {
+				var wd:Object = new Object();
+				wd.word_id = NaN;
+				wd.order_number = NaN;
+				wd.wordclass = "";
+				wd.meaning = "";
+				wd.example = "";
+				wd.definition = "";
+				wd.relatedword = "";
+				wd.yourproduction = "";
+				wd.created = new Date().getTime();
+				wd.modified = new Date().getTime();
+				return wd;
+			}
+			
+			private function setWd():void {
+				_word.details[0].word_id = _word.id;
+				_word.details[0].order_number = _word.order_number;
+
+
+				if( _word.details[0].wordclass != getWc()) {
+					Application.application.outputLog(_word.id, _word.spelling, "inputWin", "品詞",  _word.details[0].wordclass, getWc());
+				}
+				if(_word.details[0].meaning.replace(/\r/g, '\n') != meaning.text.replace(/\r/g, '\n')) {
+					Application.application.outputLog(_word.id, _word.spelling, "inputWin", "意味",  _word.details[0].meaning, meaning.text);
+				}
+				if(_word.details[0].example.replace(/\r/g, '\n') != example.text.replace(/\r/g, '\n')) {
+					Application.application.outputLog(_word.id, _word.spelling, "inputWin", "例文",  _word.details[0].example, example.text);
+				}
+				if(_word.details[0].definition.replace(/\r/g, '\n') != definition.text.replace(/\r/g, '\n')) {
+					Application.application.outputLog(_word.id, _word.spelling, "inputWin", "定義",  _word.details[0].definition, definition.text);
+				}
+				if(_word.details[0].relatedword.replace(/\r/g, '\n') != relatedword.text.replace(/\r/g, '\n')) {
+					Application.application.outputLog(_word.id, _word.spelling, "inputWin", "関連語",  _word.details[0].relatedword, relatedword.text);
+				}
+				if(_word.details[0].yourproduction.replace(/\r/g, '\n') != yourproduction.text.replace(/\r/g, '\n')) {
+					Application.application.outputLog(_word.id, _word.spelling, "inputWin", "自己表現",  _word.details[0].yourproduction, yourproduction.text);
+				}
+
+				
+				_word.details[0].wordclass = getWc();
+				_word.details[0].meaning = meaning.text;
+				_word.details[0].example = example.text;
+				_word.details[0].definition = definition.text;
+				_word.details[0].relatedword = relatedword.text;
+				_word.details[0].yourproduction = yourproduction.text;
+				_word.details[0].modified = new Date().getTime();
+			}
+
+			private function getWc():String {
+				var wc:String = "";
+				for(var i:Number=0; i<selectWordclass.selectedIndices.length; i++) {
+					if(i>0) {
+						wc += ",";
+					}
+					wc += _wordclassList[selectWordclass.selectedIndices[i]].c;
+				}
+				return wc;
+			}
+
+			private function inputSpellingBlur():void {
+				inputSpelling.text = inputSpelling.text.replace(/^[ |　]+|[ |　]+$/g, ''); //Trim
+
+				var selWords:Array = _wordModel.find({spelling: inputSpelling.text});
+				if(selWords != null) {
+					spelling = 	selWords[0].spelling;				
+				}
+			}
+			
+			private function saveWordCheck():void {
+				_word.spelling = inputSpelling.text;
+				if(isNaN(_word.id) && _wordModel.find({spelling: _word.spelling}) != null) {
+					meaning.setFocus(); //既存データを空白で上書きしないために
+					return;
+				}
+				if(_word.spelling == null || _word.spelling.replace(' ', '') == "") {
+					return;
+				}
+
+				Application.application.outputLog(_word.id, _word.spelling, "inputWin", "inputTrainingWindow", "open", "");
+
+				this._inputTrainingWin = inputTrainingWindow(
+					PopUpManager.createPopUp(this, inputTrainingWindow, true, PopUpManagerChildList.POPUP));
+				this._inputTrainingWin.addEventListener(CloseEvent.CLOSE, saveNextHandler, false, 0, true);
+				this._inputTrainingWin.addEventListener(Event.SELECT, saveWordCheckHandler, false, 0, true);
+				this._inputTrainingWin.move(this.x+13, this.y+250);
+				
+				this._inputTrainingWin.modified = isModified(_word);
+				this._inputTrainingWin.word = _word;
+				this._inputTrainingWin.visible = true;
+			}
+			
+			private function saveWordCheckHandler(event:Event):void {
+				_word = this._inputTrainingWin.word;
+
+				Application.application.outputLog(_word.id, _word.spelling, "inputWin", "familiarity", "set", _word.familiarity);
+
+				saveWord();
+				callLater(voicePlay, [_word.spelling]);
+				
+				saveNextHandler(null);
+			}
+			private function saveNextHandler(event:Event):void {
+				if(this._inputTrainingWin.reset) {
+					_word.spelling = _nextWord;
+					spelling = _word.spelling;
+				}else 
+				if(_nextWord != null) {
+					if(!isModified(_word)) {
+						spelling = _nextWord; //強制執行
+					}
+					_nextWord = null;
+				}
+			}
+
+			private function saveWord():void {
+				var isInsert:Boolean = false;
+				var now:Number = new Date().getTime();
+
+				/* Word */
+				if(!isNaN(_word.id)) {
+					if(_word.created == 0) {
+						_word.created = now;
+					}
+					_word.modified = now;
+					
+					_wordModel.id = _word.id;
+					_wordModel.toeic_id = _word.toeic_id;
+					_wordModel.spelling = _word.spelling;
+					_wordModel.order_number = _word.order_number;
+					_wordModel.standard_meaning = _word.standard_meaning;
+					_wordModel.level = _word.level;
+					_wordModel.familiarity = _word.familiarity;
+					_wordModel.istraining = _word.istraining;
+					_wordModel.photo_uri = _word.photo_uri;
+					_wordModel.photo_comment = _word.photo_comment;
+					_wordModel.count = _word.count;
+					_wordModel.created = _word.created;
+					_wordModel.modified = _word.modified;
+					_wordModel.update({id: _word.id});
+				}else {
+					_word.created = now;
+					_word.modified = now;
+
+					_word.spelling = inputSpelling.text;
+					
+					_wordModel.id = NaN;
+					_wordModel.toeic_id = 0;
+					_wordModel.spelling = _word.spelling;
+					_wordModel.order_number = _word.order_number;
+					_wordModel.standard_meaning = _word.standard_meaning;
+					_wordModel.level = _word.level;
+					_wordModel.familiarity = _word.familiarity;
+					_wordModel.istraining = _word.istraining;
+					_wordModel.photo_uri = _word.photo_uri;
+					_wordModel.photo_comment = _word.photo_comment;
+					_wordModel.count = 0;
+					_wordModel.created = _word.created;
+					_wordModel.modified = _word.modified;
+					var result:SQLResult = _wordModel.insert();
+					_word.id = result.lastInsertRowID;
+					isInsert = true;
+				}
+				
+				/* WordDetail */
+				setWd();
+				var wordDetalModel:WordDetail = new WordDetail();
+				var o:Object = _word.details[0];
+				var wdetail:Array = wordDetalModel.find({
+					word_id: _word.id
+				});
+				o.created = now;
+				o.modified = now;
+				
+				if(wdetail == null) {
+					wordDetalModel.word_id = _word.id;
+					wordDetalModel.order_number = _word.order_number;
+					wordDetalModel.wordclass = o.wordclass;
+					wordDetalModel.meaning = o.meaning;
+					wordDetalModel.example = o.example;
+					wordDetalModel.definition = o.definition;
+					wordDetalModel.relatedword = o.relatedword;
+					wordDetalModel.yourproduction = o.yourproduction;
+					wordDetalModel.created = o.created;
+					wordDetalModel.modified = o.modified;
+					wordDetalModel.insert();
+				}else {
+					if(wdetail.length > 1) {
+						wordDetalModel.del({word_id: _word.id, order_number: wdetail[1].order_number});
+					}
+					wordDetalModel.update({
+						word_id: _word.id,
+						order_number: wdetail[0].order_number
+					},{
+						order_number: _word.order_number,
+						wordclass: o.wordclass,
+						meaning: o.meaning,
+						example: o.example,
+						definition: o.definition,
+						relatedword: o.relatedword,
+						yourproduction: o.yourproduction,
+						modified: new Date().getTime()
+					});	
+				}
+				
+				parentApplication.saveEvent(_word);
+				Application.application.outputLog(_word.id, _word.spelling, "inputWin", "saveWord", "save", JSON.encode(_word));
+				
+				spelling = _word.spelling;
+				_skipResult = null;  //リストキャッシュを初期化
+				
+			}
+
+			[Embed(source="assets/edittrash.png")] 
+			public var removeIcon:Class; 
+			
+			[Embed(source="assets/edit_clear_history.png")] 
+			public var clearIcon:Class; 
+			
+			private function clearWord():void {
+				if(!isNaN(_word.id)) {
+					if(_word.id <= 12035) {
+						Alert.show("["+_word.spelling+"]を初期化します。よろしいですか？",
+							"確認",
+							Alert.YES | Alert.NO,
+							this,
+							clearWordHandler,
+							clearIcon,
+							Alert.NO
+						);
+					}else {
+						Alert.show("["+_word.spelling+"]を削除します。よろしいですか？",
+							"確認",
+							Alert.YES | Alert.NO,
+							this,
+							removeWordHandler,
+							removeIcon,
+							Alert.NO
+						);
+					}	
+				}
+			}
+			
+			private function clearWordHandler(event:CloseEvent):void {
+				if (event.detail == Alert.YES) {
+					_wordModel.id = _word.id;
+					_wordModel.toeic_id = _word.toeic_id;
+					_wordModel.spelling = _word.spelling;
+					_wordModel.order_number = _word.order_number;
+					_wordModel.standard_meaning = _word.standard_meaning;
+					_wordModel.level = _word.level;
+					_wordModel.familiarity = 0;
+					_wordModel.istraining = 0;
+					_wordModel.photo_uri = null;
+					_wordModel.photo_comment = null;
+					_wordModel.count = 0;
+					_wordModel.created = _word.created;
+					_wordModel.modified = new Date().getTime();
+					_wordModel.update({id: _word.id});
+					var wordDetalModel:WordDetail = new WordDetail();
+					wordDetalModel.del({word_id: _word.id, order_number: _word.order_number});
+					spelling = _word.spelling; //再読み込み
+					parentApplication.saveEvent(null);
+					Application.application.outputLog(_word.id, _word.spelling, "inputWin", "remove", "clear", "");
+				}
+			}
+			
+			private function removeWordHandler(event:CloseEvent):void {
+				if (event.detail == Alert.YES) {
+					_wordModel.del({id:_word.id});
+					var wordDetalModel:WordDetail = new WordDetail();
+					wordDetalModel.del({word_id: _word.id, order_number: _word.order_number});
+					this.goPrevious(); //ひとつ前を読み込み
+					parentApplication.saveEvent(null);
+					Application.application.outputLog(_word.id, _word.spelling, "inputWin", "remove", "remove", "");
+				}
+			}
+			
+			private function openMyPortfolio(level:Boolean):void {
+				parentApplication.openList(level);
+				if(_word) {
+					Application.application.outputLog(_word.id, _word.spelling, "inputWin", "myportfolio", "open", level.toString());
+				}
+			}
+			
+			private function pasteMeaning():void {
+				if(_word == null) return;
+				if(meaning.text == "") {
+					meaning.text = _word.standard_meaning;
+				}else
+				if(meaning.text != _word.standard_meaning) {
+					Alert.show("意味を上書きします。よろしいですか？",
+						"確認",
+						Alert.YES | Alert.NO,
+						this,
+						pasteMeaningHandler,
+						null,
+						Alert.NO
+					);
+				}
+				Application.application.outputLog(_word.id, _word.spelling, "inputWin", "meaning", "paste", "");
+			}
+			private function pasteMeaningHandler(event:CloseEvent):void {
+				if (event.detail == Alert.YES) {
+					meaning.text = _word.standard_meaning;
+				}
+			}
+
+//************ Import **************//			
+			private function clickImport():void {
+				var win:selectImportWindow = selectImportWindow(
+					PopUpManager.createPopUp(this, selectImportWindow, true, PopUpManagerChildList.POPUP));
+				win.addEventListener(CloseEvent.CLOSE, closeHandler, false, 0, true);
+				win.move(this.x+13, this.y+20);
+				win.parentChanged(this);
+				win.visible = true;
+			}
+			
+			private function closeHandler(event:Event):void {
+				event.target.visible = false;
+			}
+			private var _myRequest:URLRequest = null;
+			private var _myLoader:URLLoader = null;
+			private var _myVariables:URLVariables = null;
+
+			public function serverImport():void {
+				if(_myRequest == null) {
+	  				_myRequest = new URLRequest("http://lexinote.com/AIR/tools/getMyWords.php");
+
+	 				_myVariables = new URLVariables();
+	 				_myLoader = new URLLoader();
+					_myLoader.addEventListener(Event.COMPLETE, getMyWordsHandler, false, 0, true);
+					_myLoader.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler, false, 0, true)	;
+					_myVariables.dogname = Application.application.getUserID();
+					_myRequest.data = _myVariables;
+					_myRequest.method = URLRequestMethod.POST;
+				}
+				_myLoader.load(_myRequest);
+				CursorManager.setBusyCursor();
+			}
+			private function getMyWordsHandler(e:Event):void {
+				var xml:XML = XML(e.target.data);
+				if(xml.@result != "OK") {
+					Alert.show("データの取得に失敗しました。");
+					return;
+				}
+				for each(var word:XML in xml.Word) {
+
+					var wordDetalModel:WordDetail = new WordDetail();
+					var wdetail:Array = wordDetalModel.find({
+						word_id: word.word_id
+					});
+					if(wdetail == null) {
+						wordDetalModel.word_id = word.word_id;
+						wordDetalModel.order_number = word.order_number;
+						wordDetalModel.wordclass = word.wordclass;
+						wordDetalModel.meaning = word.meaning;
+						wordDetalModel.example = word.example;
+						wordDetalModel.definition = word.definition;
+						wordDetalModel.relatedword = word.relatedword;
+						wordDetalModel.yourproduction = word.yourproduction;
+						wordDetalModel.created = Date.parse(String(word.created).replace(/\-/g, "/"));
+						wordDetalModel.modified = Date.parse(String(word.modified).replace(/\-/g, "/"));
+						if(isNaN(wordDetalModel.modified)) wordDetalModel.modified = 0;
+						wordDetalModel.insert();
+					}else {
+						wordDetalModel.word_id = word.word_id;
+						wordDetalModel.order_number = word.order_number;
+						wordDetalModel.wordclass = word.wordclass;
+						wordDetalModel.meaning = word.meaning;
+						wordDetalModel.example = word.example;
+						wordDetalModel.definition = word.definition;
+						wordDetalModel.relatedword = word.relatedword;
+						wordDetalModel.yourproduction = word.yourproduction;
+						wordDetalModel.created = Date.parse(String(word.created).replace(/\-/g, "/"));
+						wordDetalModel.modified = Date.parse(String(word.modified).replace(/\-/g, "/"));
+						if(isNaN(wordDetalModel.modified)) wordDetalModel.modified = 0;
+						wordDetalModel.update({word_id: word.word_id});
+					}
+				
+					var wordModel:Word = new Word();
+					var w:Array = wordModel.find({
+						id: word.word_id
+					});
+					if(w == null) {
+						wordModel.id = word.word_id;
+						wordModel.spelling = word.spelling;
+						wordModel.order_number = word.order_number;
+						wordModel.level = word.level;
+						wordModel.familiarity = word.familiarity;
+						wordModel.istraining = word.istraining;
+						wordModel.photo_uri = word.photo_uri;
+						wordModel.photo_comment = word.photo_comment;
+						wordModel.count = word.count;
+						wordModel.created = Date.parse(String(word.created).replace(/\-/g, "/"));
+						wordModel.modified = Date.parse(String(word.modified).replace(/\-/g, "/"));
+						if(isNaN(wordModel.modified)) wordModel.modified = 0;
+						wordModel.insert();
+					}else {				
+						wordModel.id = word.word_id;
+						wordModel.spelling = word.spelling;
+						wordModel.order_number = word.order_number;
+						wordModel.level = word.level;
+						wordModel.familiarity = word.familiarity;
+						wordModel.istraining = word.istraining;
+						wordModel.photo_uri = word.photo_uri;
+						wordModel.photo_comment = word.photo_comment;
+						wordModel.count = word.count;
+						wordModel.created = Date.parse(String(word.created).replace(/\-/g, "/"));
+						wordModel.modified = Date.parse(String(word.modified).replace(/\-/g, "/"));
+						if(isNaN(wordModel.modified)) wordModel.modified = 0;
+						wordModel.standard_meaning = w[0].standard_meaning;
+						wordModel.toeic_id = w[0].toeic_id;
+						wordModel.update({id: word.word_id});
+					}
+				}
+				CursorManager.removeBusyCursor();
+				Alert.show("lexinoteを終了します。再起動してください。","確認", Alert.OK,null,function():void {
+					Application.application.myExit();
+				});
+			}
+			
+			private function ioErrorHandler(e:Event):void {
+				Alert.show("サーバに接続できませんでした。");
+				CursorManager.removeBusyCursor();
+			}
+
+			public function dbImport():void {
+				var dbFilter:FileFilter =
+				  new FileFilter("lexinoteバックアップファイル", "*.db");
+				
+				var root:File = File.documentsDirectory;
+				root.browseForOpen("バックアップを読み込む", [dbFilter]);
+				root.addEventListener(Event.SELECT, function(event:Event):void {
+				    var selectedFile:File = File(event.target);
+				    var targetFile:File = Application.application.myRepositoryPath.resolvePath("lexinote.new");
+					selectedFile.copyTo(targetFile, true);
+					Alert.show("lexinoteを終了します。再起動してください。","確認", Alert.OK,null,function():void {
+						Application.application.myExit();
+					});
+					Application.application.outputLog(0, "", "inputWin", "db", "import", selectedFile.nativePath);
+				}, false, 0, true);
+			}
+			
+//************ Export **************//			
+			private function clickExport():void {
+				var win:selectExportWindow = selectExportWindow(
+					PopUpManager.createPopUp(this, selectExportWindow, true, PopUpManagerChildList.POPUP));
+				win.addEventListener(CloseEvent.CLOSE, closeHandler, false, 0, true);
+				win.move(this.x+13, this.y+20);
+				win.parentChanged(this);
+				win.visible = true;
+			}
+
+/*
+			public function serverExport():void {
+				var date_fmt:DateFormatter = new DateFormatter();
+				date_fmt.formatString = "YYYY-MM-DD JJ:NN:SS";
+
+				var wordModel:Word = new Word();
+				var sr:SQLResult = wordModel.query("SELECT * FROM Words WHERE created <> 0");
+				var w:Array = sr.data as Array;
+				if(w.length > 0) {
+					var xml:XML = new XML("<Words />");
+					xml.@dogname = Application.application.getUserID();
+					for(var i:Number=0; i<w.length; i++) {
+						var word:XML = xml.appendChild("<Word />");
+						word.appendChild("<word_id>"+w[i].id+"</word_id>");					
+						word.appendChild("<spelling>"+w[i].spelling+"</spelling>");					
+						word.appendChild("<order_number>"+w[i].order_number+"</order_number>");					
+						word.appendChild("<level>"+w[i].level+"</level>");					
+						word.appendChild("<familiarity>"+w[i].familiarity+"</familiarity>");					
+						word.appendChild("<istraining>"+w[i].istraining+"</istraining>");					
+						word.appendChild("<photo_uri>"+w[i].photo_uri+"</photo_uri>");					
+						word.appendChild("<photo_comment>"+w[i].photo_comment+"</photo_comment>");					
+						word.appendChild("<count>"+w[i].count+"</count>");					
+						word.appendChild("<created>"+date_fmt.format(new Date(w[i].created))+"</created>");					
+						word.appendChild("<modified>"+date_fmt.format(new Date(w[i].modified))+"</modified>");					
+						word.appendChild("<memo>"+date_fmt.format(new Date())+"</memo>");					
+
+						var wordDetailModel:WordDetail = new WordDetail();
+						var wd:Array = wordDetailModel.find({word_id: w[i].id});
+						if(wd && wd.length > 0) {
+							word.appendChild("<wordclass>"+wd[0].wordclass+"</wordclass>");					
+							word.appendChild("<meaning>"+wd[0].meaning+"</meaning>");					
+							word.appendChild("<example>"+wd[0].example+"</example>");					
+							word.appendChild("<definition>"+wd[0].definition+"</definition>");					
+							word.appendChild("<relatedword>"+wd[0].relatedword+"</relatedword>");					
+							word.appendChild("<yourproduction>"+wd[0].yourproduction+"</yourproduction>");					
+						}else {
+							word.appendChild("<wordclass/>");					
+							word.appendChild("<meaning/>");					
+							word.appendChild("<example/>");					
+							word.appendChild("<definition/>");					
+							word.appendChild("<relatedword/>");					
+							word.appendChild("<yourproduction/>");					
+						}
+					}
+					
+					Alert.show(xml.toString());
+				}
+			}
+*/
+			private var exportWords:Array;
+			private var exportIndex:Number;
+			public function serverExport():void {
+				exportWords = new Array();
+				exportIndex = 0;
+				var date_fmt:DateFormatter = new DateFormatter();
+				date_fmt.formatString = "YYYY-MM-DD JJ:NN:SS";
+
+				var wordModel:Word = new Word();
+				var sr:SQLResult = wordModel.query("SELECT * FROM Words WHERE created <> 0 OR modified <> 0 ");
+				var w:Array = sr.data as Array;
+				if(w.length > 0) {
+					for(var i:Number=0; i<w.length; i++) {
+						exportWords[i] = new Object();
+						
+						exportWords[i].id = w[i].id;										
+						exportWords[i].spelling = w[i].spelling;			
+						exportWords[i].order_number = w[i].order_number;		
+						exportWords[i].level = w[i].level;				
+						exportWords[i].familiarity = w[i].familiarity;				
+						exportWords[i].istraining = w[i].istraining;			
+						exportWords[i].photo_uri = w[i].photo_uri;				
+						exportWords[i].photo_comment = w[i].photo_comment;				
+						exportWords[i].count = w[i].count;				
+						exportWords[i].created = w[i].created;					
+						exportWords[i].modified = w[i].modified;					
+						exportWords[i].memo = date_fmt.format(new Date());
+
+						var wordDetailModel:WordDetail = new WordDetail();
+						var wd:Array = wordDetailModel.find({word_id: w[i].id});
+						exportWords[i].details = new Array();				
+						exportWords[i].details[0] = new Object();
+						if(wd && wd.length > 0) {
+							exportWords[i].details[0].wordclass = wd[0].wordclass;				
+							exportWords[i].details[0].meaning = wd[0].meaning;				
+							exportWords[i].details[0].example = wd[0].example;				
+							exportWords[i].details[0].definition = wd[0].definition;					
+							exportWords[i].details[0].relatedword = wd[0].relatedword;				
+							exportWords[i].details[0].yourproduction = wd[0].yourproduction;					
+						}else {
+							exportWords[i].details[0].wordclass ="";				
+							exportWords[i].details[0].meaning = "";				
+							exportWords[i].details[0].example = "";				
+							exportWords[i].details[0].definition = "";					
+							exportWords[i].details[0].relatedword = "";				
+							exportWords[i].details[0].yourproduction = "";					
+						}
+					}
+					
+					serverExportRequest();
+					CursorManager.setBusyCursor();
+				}
+			}
+
+			private function serverExportRequest(e:Event=null):void {
+				if(e != null) {
+					Application.application.serverUpdateWordRemoveListener(serverExportRequest, ioErrorHandler);
+				}
+				if(exportIndex < exportWords.length) {
+					Application.application.serverUpdateWord(exportWords[exportIndex], serverExportRequest, ioErrorHandler);
+					exportIndex++;
+				}else {
+					Alert.show("サーバに転送しました。");
+					CursorManager.removeBusyCursor();
+				}
+			}
+
+			public function dbExport():void {
+				
+				var root:File = File.documentsDirectory.resolvePath("lexinote_"+getDateString()+".db");
+				root.browseForSave("バックアップを保存する");
+				root.addEventListener(Event.SELECT, function(event:Event):void {
+				    var selectedFile:File = File(event.target);
+				    var targetFile:File = Application.application.myRepositoryPath.resolvePath("lexinote.db");
+					targetFile.copyTo(selectedFile, true);
+//					Alert.show("バックアップを「"+selectedFile.nativePath+"」に保存しました。","確認", Alert.OK);
+					Application.application.outputLog(0, "", "inputWin", "db", "export", selectedFile.nativePath);
+				}, false, 0, true);
+			}
+			private function getDateString():String {
+				var my_date:Date = new Date();
+				var nYear:Number = my_date.fullYear;
+			  	var nMonth:Number = my_date.month+1;
+			  	var nDate:Number = my_date.date;
+			  	var year_str:String = String(nYear).substring(2);
+			  	var month_str:String = String(nMonth+100).substring(1);
+			  	var date_str:String = String(nDate+100).substring(1);
+			  	return year_str + month_str + date_str;
+			}
+			
+	        private function dragEnterHandler(event:DragEvent):void{
+	            DragManagerImpl.getInstance().acceptDragDrop(Image(event.currentTarget));
+	
+	        }
+	        private function dragOverHandler(event:DragEvent):void{
+	        }
+	        private function dragExitHandler(event:DragEvent):void{
+	        }
+	        private function dragDropHandler(event:DragEvent):void{
+	            photoImage.source = event.dragSource.dataForFormat("img");
+   				updatePhotoImage();
+
+	        }
+			
+			private function showRelation():void {
+				lstDropdown.visible = !lstDropdown.visible;
+
+				if(lstDropdown.visible && _sel) {
+					_sel.setSelection(0,_sel.text.length);
+					serverGetRelatedwords();								
+//					var items:Array = new Array();
+//					var item_col:ArrayCollection = new ArrayCollection( items );
+//					for(var i:Number=0; i<5; i++) {
+//						items.push( { label:"ほげごげほげごげほげごげほげごげほげごげほげごげ"+i, data:"あほげごげほげごげほげごげほげごげほげごげああああ"+i } );
+//					}
+//					lstDropdown.dataProvider = item_col;
+				}
+			}
+
+
+			private var _rwRequest:URLRequest = null;
+			private var _rwLoader:URLLoader = null;
+			private var _rwVariables:URLVariables = null;
+
+			public function serverGetRelatedwords():void {
+				if(_rwRequest == null) {
+	  				_rwRequest = new URLRequest("http://lexinote.com/AIR/tools/getOtherwords.php");
+	 				_rwVariables = new URLVariables();
+	 				_rwLoader = new URLLoader();
+					_rwLoader.addEventListener(Event.COMPLETE, getRelatedwordsHandler, false, 0, true);
+					_rwLoader.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler, false, 0, true)	;
+				}
+				_rwVariables.dogname = Application.application.getUserID();
+				_rwVariables.spelling = this.spelling;
+				_rwVariables.item = _sel.id;
+				_rwRequest.data = _rwVariables;
+				_rwRequest.method = URLRequestMethod.POST;
+				_rwLoader.load(_rwRequest);
+			}
+			
+			private function getRelatedwordsHandler(e:Event):void {
+				var xml:XML = XML(e.target.data);
+				if(xml.@result != "OK") {
+					Alert.show("データの取得に失敗しました。");
+					return;
+				}
+				var items:Array = new Array();
+				var item_col:ArrayCollection = new ArrayCollection( items );
+				for each(var item:XML in xml.Relatedword) {
+					items.push( { label:item+"("+item.@cnt+"回)", data: item } );
+				}
+				lstDropdown.dataProvider = item_col;
+			}
+			
+			private function selDropdown(e:ListEvent):void {
+				trace("***********:"+selDropdown);
+				if(lstDropdown.selectedIndex >= 0) {
+					var tr:TextRange = new TextRange(_sel,true);
+					tr.text = lstDropdown.selectedItem.data;
+					_sel.setSelection(0,_sel.text.length);
+				}
+				lstDropdown.visible = false;
+			}
+			
+			private var _sel:TextArea = null;
+			private function setBtnDropdownVisible(e:FocusEvent,  b:Boolean):void {
+				_sel = e.target.parent as TextArea;
+				if(lstDropdown.visible) {
+					lstDropdown.visible = false;
+				}
+				if(b && _sel != null) {
+					imgDropdown.y = _sel.y;
+					imgDropdown.x = _sel.x + _sel.width;
+					
+					lstDropdown.x = _sel.x;
+					lstDropdown.y = _sel.y + _sel.height;
+					lstDropdown.width = _sel.width;
+					
+					var items:Array = new Array();
+					var item_col:ArrayCollection = new ArrayCollection( items );
+					items.push( { label:"<データ取得中・・・>", data: "" } );
+					lstDropdown.dataProvider = item_col;
+					
+				}
+				imgDropdown.visible = b;
+			}
+		]]>
+	</mx:Script>
+	
+	<mx:VBox  x="277" y="85" width="75" height="75" borderColor="#ffffff" borderStyle="solid" borderThickness="4" cornerRadius="7" horizontalScrollPolicy="off" verticalScrollPolicy="off">
+		<mx:Image id="photoImage" width="75" height="75" source="@Embed('assets/folder_images.png')"
+			click="openPhotoViewerWindow()"
+			buttonMode="true"
+			
+			dragEnter="dragEnterHandler(event)"
+            dragOver="dragOverHandler(event)"
+            dragExit="dragExitHandler(event)"
+            dragDrop="dragDropHandler(event)"
+		 />
+	</mx:VBox>
+	<mx:Image x="182" y="3" id="btnPrevious" source="@Embed('assets/resultset_previous.png')" buttonMode="true" click="goPrevious()" toolTip="前へ"   width="16" height="16" visible="false"/>
+	<!--mx:Image x="101" y="4" source="@Embed('assets/database_export_16x16.gif')" buttonMode="true" click="clickExport()" toolTip="バックアップを保存する"   width="16" height="16"/-->
+	<!--mx:Image x="77" y="4" source="@Embed('assets/database_import_16x16.gif')" buttonMode="true" click="clickImport()" toolTip="バックアップを読み込む"   width="16" height="16"/-->
+	<mx:Image x="237" y="4" source="@Embed('assets/player_previous.png')" buttonMode="true" click="goSkipPrevious()" toolTip="前の学習中の単語へ"   width="16" height="16" visible="true"/>
+	<mx:Image x="77" y="70" source="@Embed('assets/player_st.png')" buttonMode="true" click="goSkipFirst()" toolTip="最初の学習中の単語へ"   width="22" height="22" visible="false"/>
+	<mx:Image x="158" y="3" source="@Embed('assets/resultset_first.png')" buttonMode="true" click="goStart()" toolTip="最初へ"   width="16" height="16" visible="false"/>
+	<mx:Image x="294" y="3" source="@Embed('assets/resultset_last.png')" buttonMode="true" click="goEnd()" toolTip="最後へ"   width="16" height="16" visible="false"/>
+	<!--mx:Image x="314" y="3" source="@Embed('assets/document_new.png')" buttonMode="true" click="addWord()" toolTip="新しいアイテムを追加する"  /-->
+	<mx:Image x="336" y="5" source="@Embed('assets/player_play.png')" buttonMode="true" click="goSkipNext()" toolTip="次の学習中の単語へ"   width="16" height="16" visible="true"/>
+	<mx:Image x="226" y="70" source="@Embed('assets/player_end.png')" buttonMode="true" click="goSkipLast()" toolTip="最後の学習中の単語へ"   width="22" height="22" visible="false"/>
+	<!--mx:Image x="326" y="42" source="@Embed('assets/search.png')" buttonMode="true" click="openMyPortfolio(true)" toolTip="ポートフォリオを見にいく"   width="16" height="16"/-->
+	<mx:Image x="270" y="3" id="btnNext" source="@Embed('assets/resultset_next.png')" buttonMode="true" click="goNext()"  toolTip="次へ"   width="16" height="16" visible="false"/>
+
+	<!--mx:Image source="@Embed('assets/paste_plain.png')" buttonMode="true" 
+		click="pasteMeaning()"  x="53" y="141" id="btnPasteMeaning"  width="16" height="16"/-->
+	<mx:Image source="@Embed('assets/irc_voice.png')" buttonMode="true" 
+		click="voicePlay(example.text)"  x="53" y="190.05" width="16" height="16"/>
+	<mx:Image id="imgDropdown" source="@Embed('assets/dropdown.png')" buttonMode="true" 
+		click="showRelation()"  x="349" y="315.95" width="16" height="16" visible="false"/>
+	<mx:Image source="@Embed('assets/irc_voice.png')" buttonMode="true" 
+		click="voicePlay(yourproduction.text)"  x="53" y="394" width="16" height="16"/>
+	<mx:Label x="5" y="4" text="ノートブック" color="#033333" width="70" fontWeight="normal"/>
+	<mx:Label text="No." id="headerNo"  color="#033333" width="29" textAlign="right" x="252" y="1.9000001"/>
+	<mx:TextInput id="showNo" width="45" height="18" 
+		cornerRadius="7" borderStyle="solid" borderThickness="0" borderColor="#A9A9A6"
+		
+		restrict="[0-9]"
+		change="changeShowNo()"  x="283" y="2.9" textAlign="center"/>
+	<mx:Label text="" id="showSvlLevel" color="#333355"  x="289" y="46"/>
+	<mx:Label id="inputSpelling" width="160" text="{_spelling}"
+	 x="18" y="46" fontWeight="bold" fontSize="15"/>
+	<mx:Image source="@Embed('assets/irc_voice.png')" buttonMode="true"
+		click="voicePlay(inputSpelling.text)"  
+		toolTip="発音を確認する"  x="332" y="47" width="16" height="16"/>
+	
+	<Rating:Ratings id="inputFamiliarity" points="5" width="70" height="20" mouseChildren="false"
+		tooltips="['見たことがある','文字・音声と意味が分かる','日本語から英語に直せる','英文の中で使える','自分で文を作ることができる']"  x="187" y="46"/>
+	<mx:Label text="品詞" id="headerWordclass" color="#033333" width="65" textAlign="right"  x="9" y="86"/>
+	<mx:HorizontalList id="selectWordclass" width="199" backgroundAlpha="0" color="#033333" allowMultipleSelection="true"  
+		borderStyle="none" dataProvider="{_wordclassList}" focusIn="setBtnDropdownVisible(event,false)" selectedIndex="5" x="80" y="86" height="22"/>
+	<mx:Label text="意味" id="headerMeaning" color="#033333" width="65" textAlign="right"  x="9" y="115"/>
+	<mx:TextArea id="meaning" text="" toolTip="{meaning.text}" focusIn="setBtnDropdownVisible(event,true)" width="181" cornerRadius="7" paddingLeft="6" borderStyle="solid" borderThickness="0" borderColor="#A9A9A6" x="80" y="114"  height="44"/>
+	<mx:Label text="例文" id="headerExample" color="#033333" width="65" textAlign="right"  x="9" y="170.05"/>
+	<mx:TextArea id="example" text="" toolTip="{example.text}" focusIn="setBtnDropdownVisible(event,false)" width="267" cornerRadius="7" paddingLeft="6" borderStyle="solid" borderThickness="0" borderColor="#A9A9A6"  x="80" y="165"  height="84.95"/>
+	<mx:Label text="定義" id="headerDefinition" color="#033333" width="65" textAlign="right"  x="9" y="262"/>
+	<mx:TextArea id="definition" text="" toolTip="{definition.text}" focusIn="setBtnDropdownVisible(event,false)" width="267" cornerRadius="7" paddingLeft="6" borderStyle="solid" borderThickness="0" borderColor="#A9A9A6"  x="80" y="257.95"  height="44"/>
+	<mx:Label text="関連語" id="headerRelatedword" color="#033333" width="65" textAlign="right"  x="9" y="314.95"/>
+	<mx:TextArea id="relatedword" text="" toolTip="{relatedword.text}" focusIn="setBtnDropdownVisible(event,true)" width="267" cornerRadius="7" paddingLeft="6" borderStyle="solid" borderThickness="0" borderColor="#A9A9A6"  x="80" y="308.95"  height="44"/>
+	<mx:Label text="自己表現" id="headerYourproduction" color="#033333" width="65" textAlign="right"  x="9" y="371"/>
+	<mx:TextArea id="yourproduction" text="" toolTip="{yourproduction.text}" focusIn="setBtnDropdownVisible(event,false)" width="267" cornerRadius="7" paddingLeft="6" borderStyle="solid" borderThickness="0" borderColor="#A9A9A6"  x="80" y="362"  height="86"/>
+	<mx:Button label="登録" icon="@Embed('assets/camera_test.png')" cornerRadius="7" focusIn="setBtnDropdownVisible(event,false)" paddingLeft="6" borderColor="#A9A9A6" click="saveWordCheck()"  x="99" y="459" />
+	<mx:Button label="削除" icon="@Embed('assets/remove.png')" cornerRadius="7" focusIn="setBtnDropdownVisible(event,false)" paddingLeft="6" borderColor="#A9A9A6" click="clearWord()"  x="193" y="459" />
+	<mx:List id="lstDropdown" showDataTips="true" itemClick="selDropdown(event)" x="15" y="0" width="{this.width-35}" height="130" cornerRadius="0" backgroundColor="#FFFFFF"  borderStyle="solid" borderColor="#111111" visible="false">
+	</mx:List>
+	<mx:HRule x="17" y="65" width="334" height="5" strokeColor="#669D9E"/>
+
+</mx:Canvas>

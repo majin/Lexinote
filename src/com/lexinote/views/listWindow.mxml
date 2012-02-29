@@ -1,0 +1,988 @@
+<?xml version="1.0" encoding="utf-8"?>
+<utilities:ResizeCanvas xmlns:mx="http://www.adobe.com/2006/mxml"
+	xmlns:utilities="com.lexinote.utilities.*"
+	xmlns:Rating="com.Rating.*"
+	xmlns:views="com.lexinote.views.*"
+	verticalScrollPolicy="off" horizontalScrollPolicy="off"
+	creationComplete="init()" >
+	<mx:Script>
+		<![CDATA[
+			import mx.core.Application;
+		]]>
+	</mx:Script>
+	<!--mx:Image x="{this.width-35}" y="6" source="@Embed('assets/close.png')" click="this.parent.visible=false" toolTip="閉じる" buttonMode="true" width="16" height="16" /-->
+	<mx:Image id="btnPrint" x="{this.width-35-40}" y="6" source="@Embed('assets/printer.png')" click="myPrint()" toolTip="印刷する" buttonMode="true" width="16" height="16"  visible="false"/>
+	<mx:Image id="btnOutput" x="{this.width-35}" y="6" source="@Embed('assets/page_excel.png')" click="myOutput()" toolTip="Excel形式で保存する" buttonMode="true" width="16" height="16" />
+
+	<mx:Script>
+		<![CDATA[
+			import mx.core.Application;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import com.Rating.Ratings;
+			import com.lexinote.models.Word;
+			import com.lexinote.models.WordDetail;
+			import com.lexinote.views.printItem;
+			import mx.managers.CursorManager;
+			import mx.formatters.DateFormatter;
+			import flash.net.URLRequest;
+
+			public var _creationComplete:Boolean = false;
+			private var _wordModel:Word;
+			private var _scrollOff:Boolean = false;
+			private var _selectedFile:File;
+			
+            [Embed(source="assets/stock_text_color_hilight.png")]
+ 			[Bindable]
+            public var chkIcon:Class; 
+            
+            [Bindable]
+            public var _rtenabled:Boolean = false;           
+
+			[Bindable]
+			private var _alphabetList:Array = [
+				{ c: "a" , label: "A" },
+				{ c: "b" , label: "B" },
+				{ c: "c" , label: "C" },
+				{ c: "d" , label: "D" },
+				{ c: "e" , label: "E" },
+				{ c: "f" , label: "F" },
+				{ c: "g" , label: "G" },
+				{ c: "h" , label: "H" },
+				{ c: "i" , label: "I" },
+				{ c: "j" , label: "J" },
+				{ c: "k" , label: "K" },
+				{ c: "l" , label: "L" },
+				{ c: "m" , label: "M" },
+				{ c: "n" , label: "N" },
+				{ c: "o" , label: "O" },
+				{ c: "p" , label: "P" },
+				{ c: "q" , label: "Q" },
+				{ c: "r" , label: "R" },
+				{ c: "s" , label: "S" },
+				{ c: "t" , label: "T" },
+				{ c: "u" , label: "U" },
+				{ c: "v" , label: "V" },
+				{ c: "w" , label: "W" },
+				{ c: "x" , label: "X" },
+				{ c: "y" , label: "Y" },
+				{ c: "z" , label: "Z" }
+			];
+			[Bindable]
+			private var _portfolioList:Array = [
+				{ c: "-1", label: "マイポートフォリオ" }
+			];
+			[Bindable]
+			private var _levelList:Array = [
+				{ c: "6" , label: "　課　題　" },
+				{ c: "7" , label: "TOEIC" },
+				{ c: "0" , label: "すべて" },
+				{ c: "1" , label: "初　級" },
+				{ c: "2" , label: "中　級" },
+				{ c: "3" , label: "上　級" },
+				{ c: "4" , label: "超上級" },
+				{ c: "5" , label: "その他" }
+			];
+			[Bindable]
+			private var _words:Array;
+			
+			private var _condition:String = "-1";
+			private var _alphabet:String = "";
+			private var _openWord:String = "";
+			private var _openTab:String = "";
+			private var _openLevel:Boolean = false;
+			
+			public function init():void {
+				_wordModel = new Word();
+
+				this.visible = true;
+				if(_openTab == "portfolio") {
+					selectorMyportfolio.selectedIndex = 0;
+					selectorLevel.selectedIndex = -1;
+					loadWords("-1");
+					for(var i:Number=0; i<_words.length; i++) {
+						if(_words[i].spelling == _openWord) {
+							dgList.selectedIndex = i;
+							dgList.validateNow();
+							dgList.scrollToIndex(i);
+							break;
+						}
+				    }
+				}else
+				if(_openWord == "") {
+//					if(_condition != "6") {
+//						selectorMyportfolio.selectedIndex = 0;
+//						selectorLevel.selectedIndex = -1;
+//						loadWords("-1");
+//					}
+					if(!_creationComplete) {
+						selectorMyportfolio.selectedIndex = 0;
+						selectorLevel.selectedIndex = -1;
+						loadWords("-1");
+					}
+				}else {
+//					if(_openLevel) {
+					autoSelect(_openWord);
+//					}
+				}
+
+				_creationComplete = true;
+				
+				this.addEventListener(KeyboardEvent.KEY_DOWN, function (event:KeyboardEvent):void
+				{
+					if (event.keyCode == Keyboard.CONTROL) {
+						_rtenabled = true;
+					}
+				});
+				this.addEventListener(KeyboardEvent.KEY_UP, function (event:KeyboardEvent):void
+				{
+					if (event.keyCode == Keyboard.CONTROL) {
+						_rtenabled = false;
+					}
+				});
+
+				browser.changeTab(_openTab);
+				browser.setText(_openWord);
+			}
+			
+			public function setOpenWord(txt:String, tab:String="", level:Boolean=false):void {
+				_openWord = txt;
+				_openTab = tab;
+				_openLevel = level;
+			}
+			
+			private function loadWords(condition:String = null, alphabet:String = ""):void {
+				var result:SQLResult;
+				var str:String = "";
+				
+				if(condition == null) {
+					condition = _condition;
+				}
+				CursorManager.setBusyCursor();
+
+				if(alphabet != "") {
+					if(condition != "0") {
+						str = "and spelling like '"+alphabet+"%'";
+					}else {
+						str = "where spelling like '"+alphabet+"%'";
+					}
+				}
+				
+				var sqlHeader:String = "select id, toeic_id, Words.order_number as order_number, Words.created as created, spelling, level, istraining, familiarity, meaning," + 
+						"case when meaning is NULL or meaning='' then standard_meaning else meaning end as xmeaning," +
+						"photo_uri, wordclass, example, definition, relatedword, yourproduction ";
+				sqlHeader += "from Words left join WordDetails on Words.id=WordDetails.word_id ";	
+/**
+ * 語カウントで親密度がアップした語はistraining=0のまま
+ * 学習者が親密度を入力した語は		istraining=1
+ * 親密度が5の場合は、	istraining=1であっても学習モードにいかない
+ */
+				switch(condition) {
+					case "-1": /* My Portfolio */
+						result = _wordModel.query(sqlHeader + "where familiarity>0 "+str+" order by istraining desc, familiarity asc, level asc, spelling asc");
+						break;
+					case "0": /* All */
+						result = _wordModel.query(sqlHeader +str + "order by (familiarity+5)%6 asc, id asc");
+						break;
+					case "1": /* 初級 */
+						result = _wordModel.query(sqlHeader + "where level>=1 and level<=3 "+str + " order by (familiarity+5)%6 asc, id asc");
+						break;
+					case "2": /* 中級 */
+						result = _wordModel.query(sqlHeader + "where level>=4 and level<=6 "+str + " order by (familiarity+5)%6 asc, id asc");
+						break;
+					case "3": /* 上級 */
+						result = _wordModel.query(sqlHeader + "where level>=7 and level<=9 "+str + " order by (familiarity+5)%6 asc, id asc");
+						break;
+					case "4": /* 超上級 */
+						result = _wordModel.query(sqlHeader + "where level>=10 and level<=12 "+str + " order by (familiarity+5)%6 asc, id asc");
+						break;
+					case "6": /* 課題語 */
+						result = _wordModel.query(sqlHeader + "where Words.order_number > 0 and Words.created > 1270047600000 "+str + " order by created desc");
+						break;
+					case "7": /* TOEIC */
+						result = _wordModel.query(sqlHeader + "where toeic_id > 0 "+str + " order by (familiarity+5)%6 asc, toeic_id asc");
+						break;
+					default: /* Othors  */
+						result = _wordModel.query(sqlHeader + "where level=0 "+str + " order by (familiarity+5)%6 asc, id asc");
+						break;
+				}
+				_words = result.data;
+				CursorManager.removeBusyCursor();
+				if(_words == null || _words.length == 0) {
+					lblCount.text = "該当するｱｲﾃﾑはありません。";
+				}else {
+					lblCount.text = "表示ｱｲﾃﾑ数："+_words.length;
+				}
+				_alphabet = alphabet;
+				_condition = condition;
+				setWordsCount(alphabet);
+				
+//				istrainingColumn.visible = false;
+				
+				if(condition == "-1") {
+//					vs_bottom.height = 200;
+//					vs_bottom.selectedIndex = 0;
+					btnOutput.visible = true;
+					istrainingColumn.visible = true;
+				}else
+				if(condition == "6") {
+//					vs_bottom.height = 400;
+//					vs_bottom.selectedIndex = 1;
+					btnOutput.visible = true;
+					browser.changeTab("lexinews");
+//					studyMode.height=0;
+				}else {
+//					vs_bottom.height = 0;
+					btnOutput.visible = false;
+//					studyMode.height=0;
+				}
+				
+				if(condition == "6") { //課題語
+					dateColumn.visible = true;
+				}else {
+					dateColumn.visible = false;
+				}	
+				
+				if(condition == "7") { //TOEIC
+					toeicColumn.visible = true;
+					No.visible = false;
+				}else {
+					toeicColumn.visible = false;
+					No.visible = true;
+				}	
+			} 
+
+			private function listClick():void {
+				_scrollOff = true;
+
+				var idx:Number = dgList.selectedIndex;
+				if(isNaN(idx) || dgList.selectedItem == null) {
+					return;
+				}
+				var spelling:String = dgList.selectedItem.spelling;
+				if(Application.application.inputWin.spelling == spelling) {
+					return;
+				}
+
+				if(_condition == "6") {
+					setOpenWord(spelling);
+//					browser.location = Application.application._uteuteURL+"modules/news/article.php?storyid="+dgList.selectedItem.order_number;
+					
+//					var date_fmt:DateFormatter = new DateFormatter();
+//					date_fmt.formatString = "YYYY/MM/DD";
+//					var subf:String = date_fmt.format(new Date(dgList.selectedItem.created));
+//trace(Application.application._bloggerURL+subf+"/"+spelling+"/");				
+//					browser.location = Application.application._bloggerURL+subf+"/"+spelling+"/";
+				}
+
+				this.parentApplication.selectWord(spelling);
+				dgList.setFocus();
+				
+				browser.setText(spelling);
+			}
+
+			private function listClick_bloger():void {
+				_scrollOff = true;
+
+				var idx:Number = dgList.selectedIndex;
+				if(isNaN(idx)) {
+					return;
+				}
+				
+				if(_condition == "6") {
+					setOpenWord(dgList.selectedItem.spelling);
+//					browser.location = Application.application._uteuteURL+"modules/news/article.php?storyid="+dgList.selectedItem.order_number;
+					
+					var date_fmt:DateFormatter = new DateFormatter();
+					date_fmt.formatString = "YYYY/MM";
+					var subf:String = date_fmt.format(new Date(dgList.selectedItem.created));
+trace(Application.application._bloggerURL+subf+"/"+dgList.selectedItem.spelling+".html");				
+//					browser.location = Application.application._bloggerURL+subf+"/"+dgList.selectedItem.spelling+".html";
+				}
+
+				this.parentApplication.selectWord(dgList.selectedItem.spelling);
+				dgList.setFocus();
+			}
+
+			private function setWordsCount(alphabet:String=""):void {
+				var result:SQLResult;
+				var scope:String;
+				var whereScope:String;
+				var andScope:String;
+				
+				if(_wordModel == null) {
+					return;
+				}
+
+				switch(_condition) {
+					case "-1": /* My Portfolio */
+		//				scope = "istraining=1"; //all
+						scope = "familiarity>0"; //all
+						break;
+					case "0": /* All */
+						scope = "familiarity>0"; //all
+						break;
+					case "1": /* 初級 */
+						scope = "familiarity>0 and level>=1 and level<=3";
+						break;
+					case "2": /* 中級 */
+						scope = "familiarity>0 and level>=4 and level<=6";
+						break;
+					case "3": /* 上級 */
+						scope = "familiarity>0 and level>=7 and level<=9";
+						break;
+					case "4": /* 超上級 */
+						scope = "familiarity>0 and level>=10 and level<=12";
+						break;
+					case "6": /* 課題 */
+						scope = "familiarity>0 and Words.order_number>0 and Words.created > 1270047600000";
+						break;
+					case "7": /* TOEIC */
+						scope = "familiarity>0 and toeic_id>0";
+						break;
+					default: /* Othors  */
+						scope = "familiarity>0 and level=0";
+						break;
+				}
+				if(scope != "") {
+					if(alphabet != "") {
+						scope += " and spelling like '"+alphabet+"%'";					
+					}
+					whereScope = "where " + scope;
+					andScope = "and " + scope;
+				}else {
+					whereScope = "";
+					andScope = "";
+				}
+				result = _wordModel.query("select count(id) from Words " + whereScope);
+				wordsCount.text = result.data[0]["count(id)"];
+				
+				result = _wordModel.query("select count(id) from Words where istraining=1 and familiarity<5 " + andScope);
+				trainingCount.text = result.data[0]["count(id)"];
+
+				result = _wordModel.query("select count(id) from Words where istraining=0 and familiarity<5 " + andScope);
+				unTrainingCount.text =  result.data[0]["count(id)"];
+
+//				result = _wordModel.query("select count(id) from Words where istraining=1 and familiarity=5 " + andScope);
+				result = _wordModel.query("select count(id) from Words where familiarity=5 " + andScope);
+				clearCount.text = result.data[0]["count(id)"];
+				
+				this.parentApplication.displayCount();
+
+			} 
+			
+			public function saveEvent(w:Object):void {
+				loadWords();
+//				studyMode.init();
+			}
+			
+			public function loadEvent(w:Object):void {
+				var hit:Boolean = false;
+				
+				if(_scrollOff) {
+					 _scrollOff = false;
+					 return;
+				}
+				if(_words != null) {
+					for(var i:Number=0; i<_words.length; i++) {
+						if(_words[i].id == w.id) {
+							dgList.selectedIndex = i;
+							dgList.validateNow();
+							dgList.scrollToIndex(dgList.selectedIndex);
+							hit = true;
+							break;
+						}
+					}
+					if(!hit) {
+						autoSelect(w.spelling);
+					}
+				}
+			}
+			
+			public function autoSelect(txt:String):void {
+				var selWords:Array = _wordModel.find({spelling: txt});
+				if(selWords == null) {
+					return;
+				}
+				
+				var w:Object = selWords[0];
+
+				switch(w.level) {
+					case 1: /* 初級 */
+					case 2: 
+					case 3:
+						selectorLevel.selectedIndex = 3
+						break;
+					case 4: /* 中級 */
+					case 5: 
+					case 6:
+						selectorLevel.selectedIndex = 4;
+						break;
+					case 7: /* 上級 */
+					case 8: 
+					case 9:
+						selectorLevel.selectedIndex = 5;
+						break;
+					case 10: /* 超上級 */
+					case 11: 
+					case 12:
+						selectorLevel.selectedIndex = 6;
+						break;
+					case 0: /* その他 */
+						selectorLevel.selectedIndex = 7;
+						break;
+					default: /* error  */
+						return;
+				}
+				selectorMyportfolio.selectedIndex = -1;
+				loadWords(selectorLevel.selectedItem.c);
+				for(var i:Number=0; i<_words.length; i++) {
+					if(_words[i].id == w.id) {
+						dgList.selectedIndex = i;
+						dgList.validateNow();
+						dgList.scrollToIndex(i);
+						break;
+					}
+				}
+			}
+			
+			private function selectAlphabet():void {
+				if(selectorAlphabet.selectedIndex < 0) {
+					return;
+				}
+//				selectorLevel.selectedIndex = -1;
+
+				loadWords(null, selectorAlphabet.selectedItem.c);
+			}
+			
+			private function selectLevel(myportfolio:Boolean=false):void {
+				if(selectorLevel.selectedIndex < 0) {
+					return;
+				}
+				selectorAlphabet.selectedIndex = -1;
+				if(myportfolio) {
+					selectorLevel.selectedIndex = -1;
+					loadWords("-1");
+				}else {
+					selectorMyportfolio.selectedIndex = -1;
+					loadWords(selectorLevel.selectedItem.c);
+				}
+			}
+			
+			private function myPrint():void {
+				//プリント
+				tl.visible = true;
+				var my_pj:PrintJob = new PrintJob();  
+			 	if (my_pj.start()) {
+					tl.verticalScrollPosition = 0;
+					var page:int = Math.ceil( tl.dataProvider.length/3 );
+					for( var i:int = 0 ; i <  page ; i ++ ){
+			   			tl.verticalScrollPosition = tl.verticalScrollPosition + 3;
+			  		}
+					tl.verticalScrollPosition = 0;
+					for( i = 0 ; i < page ; i ++ ){
+					    try {
+					    	var options:PrintJobOptions = new PrintJobOptions();
+			        		options.printAsBitmap = true;
+				  		    my_pj.addPage(tl, null, options);
+							//my_pj.addPage(tl3 );
+			    			tl.verticalScrollPosition = tl.verticalScrollPosition + 3;
+			    		}catch(e:Error){
+				   		}
+					}
+			    	my_pj.send();
+				}
+				tl.visible = false;
+			}
+
+			private function myOutput():void {
+				if(_words == null || _words.length <= 0) {
+					Alert.show("マイポートフォリオにアイテムが登録されていません。","確認", Alert.OK);
+					return;
+				}
+				/*
+				var root:File = File.documentsDirectory.resolvePath("MyPortfolio.csv");
+				root.browseForSave("マイポートフォリオをCSVファイルで保存する");
+				root.addEventListener(Event.SELECT, function(event:Event):void {
+				    _selectedFile = File(event.target);
+					outputCSV(_selectedFile);
+				}, false, 0, true);
+				*/
+
+				exportExcel();
+				//Alert.show(createItemsXML());
+			}
+			
+			private function exportExcel():void {
+				var request:URLRequest;
+				var loader:URLLoader;
+				
+				request = new URLRequest("http://lexinote.com/AIR/tools/exportExcel.php");
+
+ 				var variables:URLVariables = new URLVariables();
+				variables.format = _condition;
+				variables.xml = createItemsXML();
+				request.data = variables;
+				request.method = URLRequestMethod.POST;
+
+//navigateToURL(request);  直接開きたいがExcelは無理みたい。サーバでファイルを生成するか、AMFPHPでバイナリ転送してAIRローカルに保存したものをnavigateToURLすればできるみたい。
+//				return;
+
+            
+				loader = new URLLoader();
+				loader.addEventListener(Event.COMPLETE, onComplete, false, 0, true);
+				loader.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler, false, 0, true);
+				loader.load(request);
+
+/*				
+				var fr:FileReference = new FileReference();
+				fr.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler, false, 0, true);
+				if(_condition == "-1") {
+					fr.download(request);
+				}else {
+					fr.download(request, "Assignment.xlsx");
+				}
+*/				
+			}
+		
+			private function onComplete(e:Event):void {
+				var request:URLRequest;
+				request = new URLRequest("http://lexinote.com/AIR/export/"+e.currentTarget.data);			
+				navigateToURL(request, "_blank");
+			}
+			
+			private function ioErrorHandler(e:Event):void {
+				mx.controls.Alert.show("Excelファイルを閉じてください。","書き込みエラー"); 
+			}
+			private function createItemsXML():String {
+				var $order_number:String;
+				var xml:XML = <items userid={Application.application.getUserID()} />;
+				for(var i:Number=0, j:Number=0; i<_words.length; i++) {
+					if(_words[i].istraining == 0) {
+						continue;
+					}
+					$order_number = (_words[i].order_number > 0)?((_words[i].order_number<1000?'A':'B')+String(_words[i].order_number+1000).substring(1)):'null';
+					
+					xml.appendChild(<item id={_words[i].id}/>);
+					xml.item[j].appendChild(<spelling>{_words[i].spelling}</spelling>);
+					xml.item[j].appendChild(<order_number>{$order_number}</order_number>);
+					xml.item[j].appendChild(<spelling>{_words[i].spelling}</spelling>);
+					xml.item[j].appendChild(<level>{_words[i].level}</level>);
+					xml.item[j].appendChild(<familiarity>{getStarString(_words[i].familiarity)}</familiarity>);
+					xml.item[j].appendChild(<wordclass>{_words[i].wordclass}</wordclass>);
+					xml.item[j].appendChild(<xmeaning>{_words[i].xmeaning}</xmeaning>);
+					xml.item[j].appendChild(<example>{_words[i].example}</example>);
+					xml.item[j].appendChild(<definition>{_words[i].definition}</definition>);
+					xml.item[j].appendChild(<relatedword>{_words[i].relatedword}</relatedword>);
+					xml.item[j].appendChild(<yourproduction>{_words[i].yourproduction}</yourproduction>);
+					xml.item[j].appendChild(<created>{changeDate(_words[i])}</created>);
+					j++;
+				}
+				return xml.toXMLString();
+			}
+			
+			private function overWriteHandler(event:CloseEvent):void {
+				if (event.detail == Alert.YES) {
+					outputCSV(_selectedFile);
+				}
+			}
+			private function getDateString():String {
+				var my_date:Date = new Date();
+				var nSeconds:Number = my_date.seconds;
+				var nMinutes:Number = my_date.minutes;
+				var nHours:Number = my_date.hours;
+				var nYear:Number = my_date.fullYear;
+			  	var nMonth:Number = my_date.month+1;
+			  	var nDate:Number = my_date.date;
+			  	var year_str:String = String(nYear).substring(2);
+			  	var month_str:String = String(nMonth+100).substring(1);
+			  	var date_str:String = String(nDate+100).substring(1);
+			  	var hours_str:String = String(nHours+100).substring(1);
+			  	var minutes_str:String = String(nMinutes+100).substring(1);
+			  	var seconds_str:String = String(nSeconds+100).substring(1);
+			  	return year_str + month_str + date_str + hours_str + minutes_str + seconds_str;
+			}
+
+			private function outputCSV(f:File):void {
+				var stream:FileStream = new FileStream();
+				stream.open(f, FileMode.WRITE);
+
+				var buff:String = "";
+				buff += "No,";
+				buff += "アイテム,";
+				buff += "Lv.,";
+				buff += "親密度,";
+				buff += "品詞,";
+				buff += "意味,";
+				buff += "例文,";
+				buff += "定義,";
+				buff += "関連,";
+				buff += "自己表現\r\n";
+				stream.writeMultiByte(buff, File.systemCharset);
+				for(var i:Number=0; i<_words.length; i++) {
+					buff = "";
+					buff += _words[i].id + ",";
+					buff += "\""+_words[i].spelling + "\",";
+					buff += _words[i].level + ",";
+					buff += "\""+getStarString(_words[i].familiarity) + "\",";
+					buff += "\""+_words[i].wordclass + "\",";
+					buff += "\""+_words[i].xmeaning + "\",";
+					buff += "\""+_words[i].example + "\",";
+					buff += "\""+_words[i].definition + "\",";
+					buff += "\""+_words[i].relatedword + "\",";
+					buff += "\""+_words[i].yourproduction + "\"\r\n";
+					stream.writeMultiByte(buff, File.systemCharset);
+				}
+				stream.close();
+
+//				var _alert:Alert = Alert.show("マイポートフォリオを「"+f.nativePath+"」に保存しました。","確認", Alert.YES);
+//                _alert.width = 600;
+                Application.application.outputLog(0, "", "inputWin", "CSV", "output", f.nativePath);
+			}
+			
+			private function getStarString(n:Number):String {
+				var s:String ="★★★★★☆☆☆☆☆";
+				return s.substr(5-n, 5);
+			}
+
+			private function changeDate(item:Object,columnName:String=""):String {
+				if(item.created > 0) {
+					var date_fmt:DateFormatter = new DateFormatter();
+					date_fmt.formatString = "'YY/MM/DD HH:NN";
+					return date_fmt.format(new Date(item.created));;
+//					return (new Date(item.created)).toString();
+				}
+				return "";
+			}
+			
+			public function changeTraining(data:Object):void {
+				
+				data.istraining = data.istraining?0:1;
+				Application.application.serverUpdateWord(data);
+				Application.application.outputLog(data.id, data.spelling, "flag", "練習", data.istraining?1:0, "");
+
+				_wordModel.update({id:data.id}, {
+					istraining: data.istraining?1:0
+				});
+				setWordsCount();
+				Application.application.runWin.init();
+				
+			}
+			
+			public function listKeydown(e:KeyboardEvent):void {
+/*
+				if(e.keyCode == Keyboard.UP) {
+					if(dgList.selectedIndex >= 0) {
+						dgList.selectedIndex--;
+					}else {
+						return;
+					}
+				}else
+				if(e.keyCode == Keyboard.DOWN) {
+					if(dgList.selectedIndex < _words.length) {
+						dgList.selectedIndex++;
+					}else {
+						return;
+					}
+				}else {
+					return;
+				}
+				
+//				dgList.validateNow();
+//				dgList.scrollToIndex(dgList.selectedIndex);
+*/
+				listClick();
+			}
+
+
+			private function sortTraining(obj1:Object, obj2:Object):int{
+				if(obj1.familiarity == 5 &&  obj2.familiarity < 5){
+					return istrainingColumn.sortDescending?-1:1;
+				}else if(obj1.familiarity < 5 && obj2.familiarity == 5){
+					return istrainingColumn.sortDescending?1:-1;
+				}
+				if(obj1.istraining > obj2.istraining){
+					return 1;
+				}else if(obj1.istraining < obj2.istraining){
+					return -1;
+				}
+				if(obj1.familiarity > obj2.familiarity){
+					return istrainingColumn.sortDescending?-1:1;
+				}else if(obj1.familiarity < obj2.familiarity){
+					return istrainingColumn.sortDescending?1:-1;
+				}
+				return 0;
+			}
+/*
+			private function sortTraining(obj1:Object, obj2:Object):int{
+				if(obj1.istraining < obj2.istraining){
+					return 1;
+				}else if(obj1.istraining > obj2.istraining){
+					return -1;
+				}
+				
+				if(obj1.familiarity > obj2.familiarity){
+					return 1;
+				}else if(obj1.familiarity < obj2.familiarity){
+					return -1;
+				}
+				return 0;
+			}
+*/			
+			private function sortFamiliarity(obj1:Object, obj2:Object):int{
+/*
+				if(obj1.familiarity == 0 && obj2.familiarity == 0) {
+					return 0;
+				}else
+				if(obj1.familiarity == 0) {
+					return dgcFamiliarity.sortDescending?-1:1;
+				}else
+				if(obj2.familiarity == 0) {
+					return dgcFamiliarity.sortDescending?1:-1;
+				}
+
+				if(obj1.familiarity > obj2.familiarity){
+					return 1;
+				}else if(obj1.familiarity < obj2.familiarity){
+					return -1;
+				}
+*/
+
+				var a1:Number = obj1.familiarity;
+				var a2:Number = obj2.familiarity;
+				if(!dgcFamiliarity.sortDescending) {
+					a1 = (obj1.familiarity+5)%6;
+					a2 = (obj2.familiarity+5)%6;
+				}
+				if(a1 > a2){
+					return 1;
+				}else if(a1 < a2){
+					return -1;
+				}
+
+				return 0;
+			}
+			private function sortOrder(obj1:Object, obj2:Object):int{
+				var a1:Number = obj1.order_number;
+				var a2:Number = obj2.order_number;
+				if(!order.sortDescending) {
+					a1 = a1==0?1000000:a1;
+					a2 = a2==0?1000000:a2;
+				}
+				if(a1 > a2){
+					return 1;
+				}else if(a1 < a2){
+					return -1;
+				}
+
+				return 0;
+			}
+			public function click_rating(data:Object, e:Event):void {
+//data.spelling+" "+data.familiarity+"->"+((e.currentTarget) as Ratings).value);
+				var newValue:Number = ((e.currentTarget) as Ratings).value;
+				if(data.familiarity == newValue) {
+					return;
+				}
+
+				_wordModel.update({id:data.id}, {
+					familiarity: newValue
+				});
+				Application.application.outputLog(data.id, data.spelling, "list", "key", "familiarity", data.familiarity+"->"+newValue);
+			}
+		]]>
+	</mx:Script>
+<mx:VDividedBox x="10" y="23" width="{this.width-25}" height="{this.height-40}" horizontalScrollPolicy="off">
+	
+	<mx:VBox width="100%" height="300" horizontalScrollPolicy="off">
+		<mx:HBox width="100%" verticalAlign="bottom">
+			<mx:HorizontalList id="selectorMyportfolio" height="23" width="100" dataProvider="{_portfolioList}" click="selectLevel(true)" buttonMode="true" backgroundColor="#424542" color="#FFFFFF" borderColor="#FCFCFC"/>
+			<mx:HBox width="100%" horizontalAlign="right" horizontalScrollPolicy="off" paddingLeft="0" >
+				<mx:Label text="登録数" textAlign="right" color="#424542" width="70" fontSize="12" />
+				<mx:TextInput id="wordsCount" width="60" text="" backgroundColor="#424542" color="#ffffff" 
+					cornerRadius="5" borderStyle="solid" borderThickness="0" borderColor="#FFFFFF" dropShadowEnabled="false"
+					paddingTop="0" paddingLeft="0" editable="false" textAlign="right" height="17" />
+				<mx:Label text="学習中" textAlign="right" color="#424542" width="70" fontSize="12" />
+				<mx:TextInput id="trainingCount" width="60" text="" backgroundColor="#424542" color="#ffffff" 
+					cornerRadius="5" borderStyle="solid" borderThickness="0" borderColor="#FFFFFF" dropShadowEnabled="false"
+					paddingTop="0" paddingLeft="0" editable="false" textAlign="right" height="17" />
+				<mx:Label text="学習対象外" textAlign="right" color="#424542" width="70" fontSize="12" />
+				<mx:TextInput id="unTrainingCount" width="60" text="" backgroundColor="#424542" color="#ffffff" 
+					cornerRadius="5" borderStyle="solid" borderThickness="0" borderColor="#FFFFFF" dropShadowEnabled="false"
+					paddingTop="0" paddingLeft="0" editable="false" textAlign="right" height="17" />
+				<mx:Label text="学習済み" textAlign="right" color="#424542" width="70" fontSize="12" />
+				<mx:TextInput id="clearCount" width="60" text="" backgroundColor="#424542" color="#ffffff" 
+					cornerRadius="5" borderStyle="solid" borderThickness="0" borderColor="#FFFFFF" dropShadowEnabled="false"
+					paddingTop="0" paddingLeft="0" editable="false" textAlign="right" height="17" />
+			</mx:HBox>
+		</mx:HBox>
+
+		<mx:HorizontalList id="selectorLevel" height="23" width="600" dataProvider="{_levelList}" click="selectLevel()" buttonMode="true" backgroundColor="#424542" color="#FFFFFF" horizontalScrollPolicy="off"/>
+		<mx:HBox width="100%" verticalAlign="bottom">
+			<mx:HorizontalList id="selectorAlphabet" height="23" width="420" dataProvider="{_alphabetList}" change="selectAlphabet()" buttonMode="true" backgroundAlpha="0" color="#424542" horizontalScrollPolicy="off"/>
+			<mx:HBox width="100%" horizontalAlign="right">
+				<mx:Label id="lblCount" textAlign="right" color="#424542" />
+			</mx:HBox>	
+		</mx:HBox>	
+		<mx:DataGrid id="dgList" width="100%" height="100%" dataProvider="{_words}" itemClick="listClick()"  keyDown="listKeydown(event)">
+			<mx:columns>
+				<mx:DataGridColumn id="istrainingColumn" headerText="練習" dataField="istraining" width="58" textAlign="center" paddingLeft="0" paddingRight="3"
+				    editable="false" sortCompareFunction="sortTraining">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center"/>
+						</mx:Component>
+					</mx:headerRenderer>
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:CheckBox click="outerDocument.changeTraining(data)"
+								 selected="{data.familiarity==5?false:data.istraining}"
+								 enabled="{data.familiarity==5?false:true}"
+								upIcon="@Embed('assets/flag_gray.png')"
+								overIcon="@Embed('assets/flag_gray.png')"
+								downIcon="@Embed('assets/flag_gray.png')"
+					 			selectedUpIcon="@Embed('assets/flag_orange.png')"
+								selectedOverIcon="@Embed('assets/flag_orange.png')"
+								selectedDownIcon="@Embed('assets/flag_orange.png')"
+								disabledIcon="@Embed('assets/award_star_gold_3.png')"
+							  />
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>
+				
+				<mx:DataGridColumn id="order" headerText="課題" dataField="order_number" width="58"
+					 textAlign="center" editable="false" paddingLeft="0" paddingRight="3"  sortCompareFunction="sortOrder">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center"/>
+						</mx:Component>
+					</mx:headerRenderer>
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center" text="{this.data.order_number>0?((this.data.order_number>1000?'B':'A')+String(this.data.order_number+1000).substring(1)):''}"/>
+							<!--mx:VBox horizontalAlign="center" verticalAlign="middle">
+								<mx:Image  height="16" width="16" source="{data.order_number>0?outerDocument.chkIcon:''}"/>
+							</mx:VBox-->
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>
+
+				<mx:DataGridColumn id="dateColumn" headerText="出題日" dataField="created" width="100" textAlign="right" editable="false" paddingLeft="0" paddingRight="3" labelFunction="changeDate">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center"/>
+						</mx:Component>
+					</mx:headerRenderer>
+				</mx:DataGridColumn>
+				
+				<mx:DataGridColumn id="toeicColumn" headerText="TOEIC" dataField="toeic_id" width="62" textAlign="right" editable="false" paddingLeft="0" paddingRight="3">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center"/>
+						</mx:Component>
+					</mx:headerRenderer>
+				</mx:DataGridColumn>
+				
+				<mx:DataGridColumn id="No" headerText="No." dataField="id" width="42" textAlign="right" editable="false" paddingLeft="0" paddingRight="3">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center"/>
+						</mx:Component>
+					</mx:headerRenderer>
+				</mx:DataGridColumn>
+				
+				<mx:DataGridColumn headerText="ｱｲﾃﾑ" dataField="spelling" width="90" textAlign="left" editable="false">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center"/>
+						</mx:Component>
+					</mx:headerRenderer>
+				</mx:DataGridColumn>
+
+				<mx:DataGridColumn headerText="Lv." dataField="level"  width="28" textAlign="center" editable="false" paddingLeft="0" paddingRight="0">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center" />
+						</mx:Component>
+					</mx:headerRenderer>
+				</mx:DataGridColumn>
+
+				<mx:DataGridColumn id="dgcFamiliarity" headerText="親密度" dataField="familiarity" rendererIsEditor="false"
+					 editable="false" width="80" textAlign="center" sortCompareFunction="sortFamiliarity">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center" />
+						</mx:Component>
+					</mx:headerRenderer>
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:HBox mouseChildren="{outerDocument._rtenabled}" backgroundAlpha="0.5" backgroundColor="{(this.data.familiarity>4)?0xccffcc:0xffffff}" horizontalScrollPolicy="off">
+								<Rating:Ratings value="{this.data.familiarity}"  click="outerDocument.click_rating(this.data, event)"/>
+							</mx:HBox>
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>
+
+				<mx:DataGridColumn headerText="意味" dataField="xmeaning" showDataTips="true" editable="false" width="160">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center" />
+						</mx:Component>
+					</mx:headerRenderer>
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:TextInput color="{(!this.data.meaning || this.data.meaning=='')?0x999999:0x000000}" editable="false" borderStyle="none" backgroundAlpha="0"  buttonMode="true" toolTip="{this.text}"/>
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>
+
+				<mx:DataGridColumn headerText="例文" dataField="example" showDataTips="true" editable="false" width="200">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center" />
+						</mx:Component>
+					</mx:headerRenderer>
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:TextInput editable="false" borderStyle="none"  backgroundAlpha="0" buttonMode="true" toolTip="{this.text}" />
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>
+				
+				<mx:DataGridColumn headerText="自己表現" dataField="yourproduction" showDataTips="true" editable="false">
+					<mx:headerRenderer>
+						<mx:Component>
+							<mx:Label textAlign="center" />
+						</mx:Component>
+					</mx:headerRenderer>
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:TextInput editable="false" borderStyle="none"  backgroundAlpha="0" buttonMode="true" toolTip="{this.text}" />
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>
+			</mx:columns>
+		</mx:DataGrid>
+	</mx:VBox>
+	<mx:ViewStack id="vs_bottom" width="100%" height="100%" horizontalScrollPolicy="off">
+		<views:dictionaryWindow id="browser" top="0" left="0" height="100%" width="100%"/>
+		<!--views:feedWindow id="browser" top="0" left="0" height="100%" width="100%"/>
+		
+		<mx:Box width="100%" height="100%">
+			<mx:HTML id="browser" location="{Application.application._bloggerURL}" top="0" left="0" height="100%" width="100%"   />
+		</mx:Box-->
+	</mx:ViewStack>
+	<!--views:studyWindow id="studyMode" top="0" left="0" height="0" width="100%"/-->
+	</mx:VDividedBox>
+
+	<!--印刷用-->
+	<mx:TileList id="tl" width="562" height="810" visible="false" x="3000" y="0"
+		paddingBottom="2" paddingLeft="8" paddingRight="2" paddingTop="2"
+		backgroundAlpha="1" borderColor="0xcccccc" backgroundColor="0xffffff" 
+		borderThickness="1" borderStyle="solid"
+		rowCount="3" columnCount="1" cacheAsBitmap="true" cachePolicy="on"
+		verticalScrollPolicy="off" cornerRadius="5"
+		rollOverColor="0xffffff" selectionColor="0xffffff"
+		dataProvider="{_words}" itemRenderer="com.lexinote.views.printItem"/>
+
+
+</utilities:ResizeCanvas>

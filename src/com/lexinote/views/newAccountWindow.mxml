@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" 
+	xmlns:utilities="com.lexinote.utilities.*"
+	width="375" height="366" backgroundColor="#FFFFFF"  creationComplete="myShow()" >
+
+	<mx:Script>
+		<![CDATA[
+			import flash.system.IMEConversionMode;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.core.Application;
+			import mx.utils.StringUtil;
+		    import com.lexinote.utilities.ForcibleLoader;
+			
+			private function myShow():void {
+				btnOK.setFocus();
+				changeDog("startup");
+			}
+
+			private var _myRequest:URLRequest = null;
+			private var _myLoader:URLLoader = null;
+			private var _myVariables:URLVariables = null;
+
+			private function ok(e:Event=null):void {
+				if(StringUtil.trim(dogname.text) == "") {
+					errMsg.text = "ニックネームを入力してください。";
+					changeDog("incorrect");
+					return;					
+				}
+				if(StringUtil.trim(passwd.text) == "") {
+					errMsg.text = "パスワードを入力してください。";
+					changeDog("incorrect");
+					return;					
+				}
+				if(StringUtil.trim(userid.text) == "") {
+					errMsg.text = "学籍番号を入力してください。";
+					changeDog("incorrect");
+					return;					
+				}
+				if(StringUtil.trim(groupkey.text) == "") {
+					errMsg.text = "グループキーを入力してください。";
+					changeDog("incorrect");
+					return;					
+				}
+				if(StringUtil.trim(email.text) == "") {
+					errMsg.text = "メールアドレスを入力してください。";
+					changeDog("incorrect");
+					return;					
+				}
+				if(email.text != emailconfirm.text) {
+					errMsg.text = "メールアドレスが確認と一致しません。";
+					changeDog("incorrect");
+					return;					
+				}
+				if(passwd.text != passwdconfirm.text) {
+					errMsg.text = "パスワードが確認と一致しません。";
+					changeDog("incorrect");
+					return;					
+				}
+				if(StringUtil.trim(groupkey.text) == "") {
+					errMsg.text = "グループキーを入力してください。";
+					changeDog("incorrect");
+					return;					
+				}
+				
+				
+				/* new Account */
+				if(_myRequest == null) {
+	  				_myRequest = new URLRequest("http://lexinote.com/AIR/tools/newAccount.php");
+ 					_myVariables = new URLVariables();
+ 					_myLoader = new URLLoader();
+					_myLoader.addEventListener(Event.COMPLETE, onC, false, 0, true);
+					_myLoader.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler, false, 0, true)	;
+					/* Loaderはメモリを食うので毎回生成せず・・・*/
+				}
+				_myVariables.dogname = dogname.text;         
+				_myVariables.passwd = passwd.text;         
+				_myVariables.username = username.text;         
+				_myVariables.userid = userid.text;         
+				_myVariables.groupkey = groupkey.text;         
+				_myVariables.email = email.text;         
+				
+				_myRequest.data = _myVariables;
+				_myRequest.method = URLRequestMethod.POST;
+				_myLoader.load(_myRequest);	
+				
+
+/*
+				var request:URLRequest;
+				var loader:URLLoader;
+
+				if(Application.application.isLogin()) {
+					request = new URLRequest(Application.application._uteuteURL+"user.php?op=logout");
+					loader = new URLLoader();
+					loader.addEventListener(Event.COMPLETE, ok, false, 0, true);
+					loader.load(request);
+					
+					Application.application.setLogout();
+					return;
+				}				
+				
+ 				request = new URLRequest(Application.application._uteuteURL+"user.php");
+ 				var variables:URLVariables = new URLVariables();
+				variables.uname = username.text;
+	            variables.pass = passwd.text;
+	            variables.xoops_redirect = "/xoops/";
+	            variables.op = "login";
+				request.data = variables;
+				request.method = URLRequestMethod.POST;
+            
+//				navigateToURL(request);
+
+				loader = new URLLoader();
+				loader.addEventListener(Event.COMPLETE, onC, false, 0, true);
+				loader.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler, false, 0, true);
+				
+				loader.load(request);
+*/
+			}
+			private function onC(e:Event):void {
+				var result:String = e.target.data as String;
+				if(result == "#error") {
+					errMsg.text = "最新のLexinoteに更新してください。";
+					changeDog("incorrect");
+				}else
+				if(result == "#exists") {
+					errMsg.text = "ニックネームは既に使用されています。";
+					changeDog("incorrect");
+				}else
+				if(result == "") {
+					//OK
+					changeDog("correct");
+					errMsg.setStyle("color",0x0000ff);
+					errMsg.text = "アカウントが作成されました。";
+					btnOK.visible = false;
+					btnCANCEL.label = "閉じる";
+					
+					(parent as loginWindow).username.text = dogname.text;
+					(parent as loginWindow).passwd.text = passwd.text;
+				}else {
+					//Unknown error					
+					mx.controls.Alert.show(e.target.data); 
+				}
+				//mx.controls.Alert.show(e.target.data); 
+			}
+			private function ioErrorHandler(e:Event):void {
+				errMsg.text = "接続できませんでした。";
+			}
+			
+			
+			private function cancel():void {
+ 				this.visible = false;
+ 			}
+ 			
+			
+  			public function changeDog(kind:String="waiting"):void {
+  			}
+		]]>
+	</mx:Script>
+	<mx:Label text="アカウントの作成" y="10" fontSize="16" horizontalCenter="0" color="#2B4B8C" fontWeight="bold"/>
+	<mx:Label y="43" text="ニックネーム*：" x="76" fontWeight="bold"/>
+	<mx:TextInput y="41" x="172" id="dogname" width="143" imeMode="{IMEConversionMode.JAPANESE_HIRAGANA}" borderColor="#AAAAAA"/>
+	<mx:Label y="292" fontWeight="bold" color="#FE0505" id="errMsg" textAlign="center" horizontalCenter="0"/>
+	<mx:Label y="80" text="パスワード* ：" x="79" fontWeight="bold"/>
+	<mx:TextInput y="78" x="172" displayAsPassword="true" id="passwd" width="143" borderColor="#AAAAAA"/>
+	<mx:Label y="104" text="確認* ：" x="117" fontWeight="bold"/>
+	<mx:TextInput y="102" x="172" displayAsPassword="true" id="passwdconfirm" width="143" borderColor="#AAAAAA"/>
+	<mx:Label y="142" text="あなたの氏名：" x="69" fontWeight="bold"/>
+	<mx:TextInput y="140" x="172" id="username" width="143" imeMode="{IMEConversionMode.JAPANESE_HIRAGANA}" borderColor="#AAAAAA"/>
+	<mx:Label y="172.05" text="学籍番号*：" x="91" fontWeight="bold"/>
+	<mx:TextInput y="172" x="172" id="userid" width="143" imeMode="{IMEConversionMode.ALPHANUMERIC_HALF}" borderColor="#AAAAAA"/>
+	<mx:Label y="206" text="グループキー*：" x="67" fontWeight="bold"/>
+	<mx:TextInput y="204" x="172" id="groupkey" width="143" imeMode="{IMEConversionMode.ALPHANUMERIC_HALF}" borderColor="#AAAAAA"/>
+	<mx:Label y="238" text="メールアドレス*：" x="59" fontWeight="bold"/>
+	<mx:TextInput y="236" x="172" id="email" width="191" imeMode="{IMEConversionMode.ALPHANUMERIC_HALF}" borderColor="#AAAAAA"/>
+	<mx:Label y="263.05" text="確認*：" x="121" fontWeight="bold"/>
+	<mx:TextInput y="260" x="172" id="emailconfirm" width="191" imeMode="{IMEConversionMode.ALPHANUMERIC_HALF}" borderColor="#AAAAAA"/>
+	<utilities:EnterButton  id="btnOK" label="OK" icon="@Embed('assets/ok.png')" click="ok()"  x="30" y="324" width="130" textAlign="center"/>
+	<utilities:EnterButton  id="btnCANCEL" label="キャンセル" icon="@Embed('assets/cancel.png')" click="cancel()"  x="179" y="323" width="130" />
+
+</mx:Canvas>

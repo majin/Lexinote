@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Panel 
+	xmlns:mx="http://www.adobe.com/2006/mxml"
+	xmlns:utilities="com.lexinote.utilities.*"
+	width="100%" height="100%" horizontalAlign="center" layout="absolute" currentState="statePost" verticalScrollPolicy="off">
+	<mx:Script>
+		<![CDATA[
+			import mx.core.Application;
+			import com.lexinote.models.Word;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import com.lexinote.utilities.LemmaManager;
+			import com.lexinote.models.Word;
+			import com.lexinote.models.UsedWord;
+			import mx.managers.CursorManager;
+
+			private var _word:Object;
+			private var _retryCount:Number;
+			
+			public function init(word:Object):void {
+				_word = word;
+				_retryCount = 0;
+				
+				correct.visible = false;
+				correct2.visible = false;
+				incorrect.visible = false;
+				this.currentState = "statePost";				
+				
+				spelling.text = _word.spelling;
+				yourproduction.text = "";
+				
+				if(_word.yourproduction == "") {
+					load.enabled = false;
+				}else {
+					load.enabled = true;
+					loadYoureproduction();
+				}
+				
+ 				this.addEventListener(KeyboardEvent.KEY_DOWN, function (event:KeyboardEvent):void
+				{
+					if (event.keyCode == Keyboard.ENTER) {
+						judge();
+					}
+				});
+ 
+			}
+
+			private function judge():void {
+				incorrect.visible = false;
+				correct2.visible = false;
+				hint.text = "";
+				var wk:String = yourproduction.text;
+
+				Application.application.outputLog(_word.id, _word.spelling, "study", "study4_1", "judge", wk);
+				
+				if(wk.split(" ").length <= 1) {
+					hint.text = "文にしてください。";
+					incorrect.visible = true;
+					_retryCount++;
+					return;
+				}else {
+					var lemmas:Array = LemmaManager.getLemmas(_word.spelling);
+					for(var i:Number=0; i<lemmas.length; i++) {
+						var pattern1:RegExp = new RegExp(lemmas[i], "ig");
+						var hits:Array = wk.match(pattern1);
+						if(hits && hits.length > 0) {
+							this.currentState = "stateNext";
+							updateUseCount(_word, wk);
+//							if(_retryCount == 0) {
+								correct.visible = true;
+//							}else {
+//								correct2.visible = true;							
+//							}
+							/*
+								サーバに投稿
+							*/
+							Application.application.outputLog(_word.id, _word.spelling, "study", "yourproduction", "post", wk);
+							return;
+						}
+					}
+				}
+				_retryCount++;
+				hint.text = _word.spelling+"を使っていますか？";
+				incorrect.visible = true;
+			}
+
+			private function updateUseCount(word:Object, yp:String):void {
+				yp = yp.replace(/[\.\"\',]/g, " ");
+				var yps:Array = yp.split(" ");
+				var unique:Array = new Array();
+				var outlist:Array = new Array();
+				var wordModel:Word = new Word();
+				var usedWordModel:UsedWord = new UsedWord();
+
+//				usedWordModel.del({word_id: word.id}); //現在の使用関連テーブルを削除
+
+				for(var i:Number=0; i<yps.length; i++) {
+					var target:String = (yps[i] as String).toLowerCase();
+					if(target == "") {
+						continue;
+					}
+					if(unique[target]) {
+						continue;
+					}else {
+						unique[target] = true;
+					}
+					var selWords:Array = wordModel.find({spelling: target});
+					if(selWords == null) {
+						var w:String = LemmaManager.getWord(target);
+						selWords = wordModel.find({spelling: w});
+					}
+					
+					
+					if(selWords != null) {
+						if(selWords[0].istraining == 0) {
+							if(usedWordModel.find({word_id:word.id, used_id:selWords[0].id}) != null) {
+								continue; //既にカウントアップ済み
+							}
+
+							//使用関連テーブルに追加
+							usedWordModel.word_id = word.id;
+							usedWordModel.used_id = selWords[0].id;
+							usedWordModel.usedspelling = yps[i];
+							usedWordModel.insert();
+
+							//使用カウンタを更新
+							selWords[0].count++;
+							wordModel.count = selWords[0].count;
+							if(selWords[0].count < 5) {
+								selWords[0].familiarity = 3; //1つ以上で星3つ
+							}else {
+								selWords[0].familiarity = 5; //５つ以上で星５つ
+							}
+							wordModel.familiarity = selWords[0].familiarity; //５つ以上で星５つ
+							selWords[0].modified = new Date().getTime();
+							wordModel.modified = selWords[0].modified;
+
+							//他の情報もセットしなければエラーになる　ここから
+							wordModel.id = selWords[0].id;
+							wordModel.spelling = selWords[0].spelling;
+							wordModel.order_number = selWords[0].order_number;
+							wordModel.standard_meaning = selWords[0].standard_meaning;
+							wordModel.level = selWords[0].level;
+							wordModel.istraining = selWords[0].istraining;
+							wordModel.photo_uri = selWords[0].photo_uri;
+							wordModel.photo_comment = selWords[0].photo_comment;
+							wordModel.created = selWords[0].created;
+							//ここまで
+
+							wordModel.update({id: selWords[0].id});
+							Application.application.serverUpdateWord(selWords[0]);
+
+							var o:Object = new Object();
+							o.src = yps[i];
+							o.word = selWords[0].spelling;
+							o.count = wordModel.count;
+							outlist.push(o);						
+						}
+					} 
+				}
+				
+				
+				if(outlist.length > 0) {
+					var s:String = "";
+					s += "以下のアイテムも親密度がアップしました！※[ ]内はこれまでの使用回数\n\n";
+					for(i=0; i<outlist.length; i++) {
+						if(i>0) {
+							s += ", ";
+						}
+						if(outlist[i].src != outlist[i].word) {
+							s += outlist[i].src + "("+outlist[i].word+")";
+						}else {
+							s += outlist[i].src;
+						}
+						s += "["+outlist[i].count+"]";
+					}
+/*					s+="\n使用累計が１回以上の語は親密度が３に、５回以上の語は親密度が５になります。";*/
+
+					var ret:Alert = Alert.show(s,_word.spelling+"の学習達成！！",Alert.OK,this,null,null,Alert.OK);
+					ret.setStyle("borderColor", 0x0000CC);
+					ret.setFocus();
+										
+				}
+			}
+
+			private function retry():void {
+				parentDocument.nextWord();
+			}
+			
+			private function goNext():void {
+//				if(_retryCount == 0) {
+					parentDocument.correctWord(_word);
+//				}
+				parentDocument.nextWord();
+			}
+			
+			
+			private function loadYoureproduction():void {
+				if(yourproduction.text == "") {
+					yourproduction.text = _word.yourproduction;
+					yourproduction.setSelection(1000,1000);
+				}else 
+				if(yourproduction.text != _word.yourproduction) {
+					Alert.show("自己表現をノートブックからコピーします。よろしいですか？",
+						"確認",
+						Alert.YES | Alert.NO,
+						this,
+						loadYoureproductionHandler,
+						null,
+						Alert.NO
+					);
+				}
+			}
+			private function loadYoureproductionHandler(event:CloseEvent):void {
+				if (event.detail == Alert.YES) {
+					yourproduction.text = _word.yourproduction;
+				}
+			}
+
+			private function dummy():void {
+				/* 	なぜかこれがなければボタンが表示されず */
+			}
+		]]>
+	</mx:Script>
+	<mx:Image id="correct" source="@Embed('assets/correct.png')" y="176"  horizontalCenter="0" alpha="0.3" />
+	<mx:Image id="correct2" source="@Embed('assets/correct2.png')" y="176"  horizontalCenter="0" alpha="0.3" />
+	<mx:Image id="incorrect" source="@Embed('assets/incorrect.png')" y="176"  horizontalCenter="0" alpha="0.3" />
+
+	<mx:Label text="次のｱｲﾃﾑを使って表現した文を投稿してください。" fontSize="23" horizontalCenter="0" y="39" color="#682406" id="label1"/>
+	<mx:TextArea y="153" width="80%" fontSize="27" horizontalCenter="0" id="yourproduction" color="#047A26" height="153" backgroundAlpha="0"/>
+	
+	<mx:Label y="88" fontSize="30" horizontalCenter="0" id="spelling" color="#000000" fontFamily="ＭＳ ゴシック,Osaka－等幅" paddingLeft="5" paddingRight="5" />
+	<mx:Button x="331" y="323" label="ノートブックからコピーする" id="load" click="loadYoureproduction()"/>
+	<mx:Label y="363" fontSize="20" color="#cccccc" horizontalCenter="0" id="hint"/>
+
+    <mx:transitions>
+        <mx:Transition id="myTransition1" fromState="*" toState="statePost">
+            <mx:Parallel id="t1" targets="{[btnRetry,btnPost]}">
+                <mx:Fade duration="500" alphaFrom="0" />
+                <mx:Move duration="500" yFrom="{this.height+btnRetry.height}" />
+            </mx:Parallel>
+        </mx:Transition>
+        <mx:Transition id="myTransition2" fromState="*" toState="stateNext">
+            <mx:Parallel id="t2" targets="{[btnNoNext]}">
+                <mx:Move duration="500" xFrom="{-btnNoNext.width}" />
+            </mx:Parallel>
+        </mx:Transition>
+     </mx:transitions>
+     
+
+	<mx:states>
+		<mx:State name="statePost" enterState="btnPost.setFocus()">
+			<mx:AddChild position="lastChild">
+				<utilities:EnterButton id="btnRetry" y="400" label="後でやり直し" width="222" height="90" fontSize="30" color="#C2320B" click="retry()" buttonMode="true" x="59"/>
+			</mx:AddChild>
+			<mx:AddChild position="lastChild">
+				<utilities:EnterButton id="btnPost" y="400" label="投稿する" width="222" height="90" fontSize="30" color="#065465" click="judge()" buttonMode="true" x="297"/>
+			</mx:AddChild>
+		</mx:State>
+		<mx:State name="stateNext" enterState="btnNoNext.setFocus()">
+			<mx:AddChild position="lastChild">
+				<utilities:EnterButton id="btnNoNext" y="400" label="次の語へ" width="222" height="90" fontSize="30" color="#065465"  click="goNext()" buttonMode="true" x="179"/>
+			</mx:AddChild>
+		</mx:State>
+	</mx:states>
+</mx:Panel>

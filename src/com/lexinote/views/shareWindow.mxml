@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" >
+	<mx:Image x="{this.width-30}" y="4" source="@Embed('assets/close.png')" click="this.parent.visible=false" toolTip="閉じる"  buttonMode="true" />
+
+	<mx:VBox x="10" y="23" width="{this.width-25}" height="{this.height-40}">
+		<mx:HTML id="browser" x="0" y="0" width="100%" height="100%"  verticalScrollPolicy="auto" horizontalScrollPolicy="auto" />		
+	</mx:VBox>
+	<mx:Image x="13" y="4" source="@Embed('assets/1leftarrow.png')" click="browser.historyGo(-1)"  buttonMode="true" />
+	<mx:Image x="33" y="4" source="@Embed('assets/1rightarrow.png')" click="browser.historyGo(1)"  buttonMode="true" />
+	<mx:Image x="55" y="4" source="@Embed('assets/arrow_refresh.png')" click="browser.reload()"  buttonMode="true" />
+</mx:Canvas>

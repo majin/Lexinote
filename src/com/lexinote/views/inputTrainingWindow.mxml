@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" width="350" height="280" backgroundColor="#ffffff"  show="myShow()" >
+
+	<mx:Script>
+		<![CDATA[
+			import mx.events.CloseEvent;
+			import mx.controls.Alert;
+			import mx.core.Application;
+			[Bindable]
+			private var _word:Object = null;
+			private var _modified:Boolean = false;
+			private var _confirm:Boolean = false;
+			private var _reset:Boolean = false;
+	
+			public function set word(o:Object):void {
+				_word = o;
+				myShow();
+			}
+			public function set modified(b:Boolean):void {
+				_modified = b;
+			}
+			
+			public function get word():Object {
+				return _word;
+			}
+			
+			public function get reset():Object {
+				return _reset;
+			}
+			
+			[Embed(source="assets/flag2_Green.png")] 
+			public var trainingIcon:Class; 
+			private function setFamiliarity(level:Number):void {
+				if(_word.istraining == 0 && !_confirm) {
+					_confirm = true;
+					_word.familiarity = level;
+					Alert.show(_word.spelling+"を学習メニューに追加しますか？",
+						"確認",
+						Alert.YES | Alert.NO,
+						this,
+						trainingHandler,
+						trainingIcon,
+						Alert.YES
+					);
+					return;						
+				}
+				_word.familiarity = level;
+				
+				this.visible = false;
+	           	dispatchEvent(new Event(Event.SELECT));
+	 		}
+
+			private function trainingHandler(event:CloseEvent):void {
+				if (event.detail == Alert.YES) {				
+					_word.istraining = 1;
+				}else {
+					_word.istraining = 0;
+				}
+				Application.application.outputLog(_word.id, _word.spelling, "choice", "練習", _word.istraining, "");
+				setFamiliarity(_word.familiarity);
+			}
+			
+			[Embed(source="assets/edittrash.png")] 
+			public var cancelIcon:Class; 		
+			private function cancel():void {
+				if(_modified) {
+					Alert.show("変更した内容を破棄しますか？",
+						"確認",
+						Alert.YES | Alert.NO,
+						this,
+						cancelHandler,
+						cancelIcon,
+						Alert.NO
+					);
+				}else {
+					this.visible = false;
+					dispatchEvent(new CloseEvent(CloseEvent.CLOSE));
+				}
+			}
+			
+			private function cancelHandler(event:CloseEvent):void {
+				if (event.detail == Alert.YES) {				
+					_reset = true;
+				}
+
+				this.visible = false;
+				dispatchEvent(new CloseEvent(CloseEvent.CLOSE));
+			}
+			
+			private function myShow():void {
+				if(_word != null && _word.familiarity > 0) {
+					b1.alpha = 0.5;
+					b2.alpha = 0.5;
+					b3.alpha = 0.5;
+					b4.alpha = 0.5;
+					b5.alpha = 0.5;
+					switch(_word.familiarity) {
+						case 1: b1.alpha=1; break;
+						case 2: b2.alpha=1; break;
+						case 3: b3.alpha=1; break;
+						case 4: b4.alpha=1; break;
+						case 5: b5.alpha=1; break;
+					}
+				}
+			}
+		]]>
+	</mx:Script>
+
+	<mx:VBox x="10" y="23" width="{this.width-25}" height="{this.height-40}" horizontalAlign="center">
+		<mx:Label text="{_word.spelling} とあなたの親密度は？"/>
+		<mx:Button id="b1" label="見たことがある"  icon="@Embed('assets/familiarity1.png')"  width="100%" textAlign="left" click="setFamiliarity(1)"/>
+		<mx:Button id="b2" label="文字・音声と意味が分かる"  icon="@Embed('assets/familiarity2.png')"  width="100%" textAlign="left" click="setFamiliarity(2)"/>
+		<mx:Button id="b3" label="日本語から英語に直せる"  icon="@Embed('assets/familiarity3.png')"  width="100%" textAlign="left" click="setFamiliarity(3)"/>
+		<mx:Button id="b4" label="英文の中で使える"  icon="@Embed('assets/familiarity4.png')"  width="100%" textAlign="left" click="setFamiliarity(4)"/>
+		<mx:Button id="b5" label="自分で文を作ることができる"  icon="@Embed('assets/familiarity5.png')" width="100%" textAlign="left" click="setFamiliarity(5)"/>
+		<mx:Spacer height="10" />
+		<mx:Button label="登録をキャンセルする" icon="@Embed('assets/cancel.png')" click="cancel()" />
+	</mx:VBox>
+
+</mx:Canvas>

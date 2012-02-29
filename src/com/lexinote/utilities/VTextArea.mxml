@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:TextArea xmlns:mx="http://www.adobe.com/2006/mxml" cornerRadius="7" paddingLeft="6" borderStyle="solid" borderThickness="0" borderColor="#A9A9A6" creationComplete="{onComplete();}">
+<mx:Script>
+	<![CDATA[
+		private var _autoResizable:Boolean = false;
+		
+		[Bindable(event="changeAutoResize")]
+		public function get autoResize():Boolean
+		{
+			return _autoResizable;
+		}
+		
+		public function set autoResize(b:Boolean):void
+		{
+			_autoResizable = b;
+		
+			if (this.mx_internal::getTextField() != null && _autoResizable == true)
+				resizeTextArea();
+			
+			dispatchEvent(new Event("changeAutoResize"));
+		}
+		
+		private function resizeTextArea():void
+		{
+			var totalHeight:uint = 10;
+			this.validateNow();
+			
+			var noOfLines:int = this.mx_internal::getTextField().numLines;
+			
+			for (var i:int = 0; i < noOfLines; i++)
+			{
+				var textLineHeight:int = this.mx_internal::getTextField().getLineMetrics(i).height;
+				totalHeight += textLineHeight;
+			}
+			this.height = totalHeight;
+		}
+		
+		private function onComplete():void
+		{
+			addEventListener("textChanged",onTextChange);
+			
+			function onTextChange(event:Event):void
+			{
+			resizeTextArea();
+			}
+		}
+		override protected function mouseWheelHandler(event:MouseEvent):void
+		{
+			if (verticalScrollPosition !== maxVerticalScrollPosition){
+				super.mouseWheelHandler(event);
+			}
+		}
+
+	]]>
+	</mx:Script>
+</mx:TextArea>
+ 
